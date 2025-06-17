@@ -1,0 +1,79 @@
+@startuml
+skinparam classFontSize 20
+skinparam Dpi 1200
+participant VPMIC [
+            VPMIC 
+]
+
+participant VIO [
+            VIO
+]
+
+participant VL [
+            Vlaser
+            ----
+            Vlaser_ID: 0
+            for Bottom Package
+            ----
+            Vlaser_ID: 1
+            for T_tec_ld Package
+]
+
+participant VTECDRV [
+            VTECDRV
+]
+
+participant SMCA7 [
+            AST2600
+            ----
+            A7 Core
+]
+
+participant SMCM3 [
+            AST2600
+            ----
+            M3 Core
+]
+
+participant Module [
+            Module
+            ----
+            Package: T_tec_ld / Bottom
+            ----
+            Tile_ID: 0-7
+            for Bottom Package
+            ----
+            Tile_ID: 8-15
+            for T_tec_ld Package
+]
+
+=== PowerOff => Reset State ==
+note over VPMIC : OFF
+/ note over VIO : OFF
+/ note over VL : OFF
+/ note over VTECDRV : OFF
+
+group#Gold #LightSteelBlue Bringup regulators
+              SMCM3 -> SMCA7: CMD: Power ON
+              SMCA7 -> VPMIC: CMD: Power ON
+              SMCA7 -> VIO: CMD: Power ON
+              SMCA7 -> VL: CMD: Power ON
+              SMCA7 -> VL: CMD: Set Vlaser to 2.0V
+              SMCA7 -> VTECDRV: CMD: Power ON
+              note over VPMIC : 2.5V
+              / note over VIO : 3.3V
+              / note over VL : 2.0V
+              / note over VTECDRV : 3.3V
+              SMCA7 -> SMCM3: Broadcast Power ON
+end
+
+group#Gold #LightSteelBlue Set all tiles to Reset
+              SMCM3 -> Module: CMD: ResetS True \nTarget: first tile\n(#0 for Bottom package or #8 for T_tec_ld package)
+              activate SMCM3
+              SMCM3 --> SMCM3: CMD: ResetS True \nTarget: remaining tiles
+              SMCM3 -> Module: CMD: ResetS True \nTarget: last tile\n(#7 for Bottom package or #15 for T_tec_ld package)
+              deactivate SMCM3
+end
+
+
+@enduml

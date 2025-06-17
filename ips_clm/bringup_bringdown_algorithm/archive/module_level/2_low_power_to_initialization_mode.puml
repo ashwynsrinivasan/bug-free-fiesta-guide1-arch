@@ -1,0 +1,87 @@
+@startuml
+' skinparam style strictuml
+' scale 200000*100000
+' participant VPMIC [
+'             VPMIC 
+' ]
+
+' participant VIO [
+'             VIO
+' ]
+
+participant VL [
+            Vlaser
+            ----
+            Vlaser_ID: 1-2
+]
+
+participant SMCA9 [
+            AST2600
+            ----
+            A9 Core
+]
+
+participant SMCM3 [
+            AST2600
+            ----
+            M3 Core
+]
+
+participant PKG [
+            Package
+            ----
+            Tile_ID: 1-8
+            ----
+            Package_ID: 1-2
+]
+
+=== Low Power Mode to Initialization Mode ==
+
+SMCM3 -> PKG: CMD: Init => Target Tile ID #1
+activate SMCM3
+SMCM3 -> PKG: CMD: Init => Target Tile ID #2
+SMCM3 --> SMCM3 : Send "CMD: Init" to all tiles
+SMCM3 -> PKG: CMD: Init => Target Tile ID #8
+deactivate SMCM3
+
+group#Gold #LightBlue Optimizing Vlaser for power consumption
+
+            SMCM3 -> PKG: Awaiting Vlaser_flag from all tiles in the package
+            activate SMCM3
+            PKG -> SMCM3: Broadcast Vlaser_flag for Tile ID #1
+            SMCM3 --> SMCM3 : Wait for \n"Broadcast Vlaser_flag" \nfrom all tiles in the package
+            PKG -> SMCM3: Broadcast Vlaser_flag for Tile ID #8\n(CMD from the 8th Tile in the package)            
+
+            SMCM3 -> SMCA9:  CMD: Drop Vlaser by 0.1V
+            SMCA9 -> VL: CMD: Drop Vlaser by 0.1V
+            VL -> SMCA9: Broadcast Vlaser dropped by 0.1V
+            SMCA9 -> SMCM3: Broadcast Vlaser dropped by 0.1V
+            SMCM3 -> PKG: Broadcast Vlaser dropped by 0.1V
+
+            group#Gold #LightGray Loop until Vlaser_flag transitioned from True to False
+                        SMCM3 -> PKG: Awaiting Vlaser_flag from all tiles in the package
+                        PKG -> SMCM3: Broadcast Vlaser_flag for Tile ID #1
+                        SMCM3 --> SMCM3 : Wait for \n"Broadcast Vlaser_flag" \nfrom all tiles in the package
+                        PKG -> SMCM3: Broadcast Vlaser_flag for Tile ID #8\n(CMD from the 8th Tile in the package)            
+
+                        alt#Gold #LightGreen Vlaser_flag = False
+                                    SMCM3 -> SMCA9:  CMD: Drop Vlaser by 0.1V
+                                    SMCA9 -> VL: CMD: Drop Vlaser by 0.1V
+                                    VL -> SMCA9: Broadcast Vlaser dropped by 0.1V
+                                    SMCA9 -> SMCM3: Broadcast Vlaser dropped by 0.1V
+                                    SMCM3 -> PKG: Broadcast Vlaser dropped by 0.1V
+                        else #Pink Vlaser_flag = True
+                                    SMCM3 -> SMCA9: CMD: Increase Vlaser by 0.1V
+                                    SMCA9 -> VL: CMD: Increase Vlaser by 0.1V
+                                    VL -> SMCA9: Broadcast Vlaser increased by 0.1V
+                                    SMCA9 -> SMCM3: Broadcast Vlaser increased by 0.1V
+                                    SMCM3 -> PKG: Broadcast Vlaser increased by 0.1V
+                        end
+            end
+
+            SMCM3 -> PKG: Broadcast Tile Initialized
+            PKG -> SMCM3: Broadcast Acknowledge Tile Initialized
+            deactivate SMCM3
+end
+
+@enduml

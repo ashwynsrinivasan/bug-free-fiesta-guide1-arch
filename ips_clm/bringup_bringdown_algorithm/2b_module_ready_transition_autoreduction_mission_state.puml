@@ -1,0 +1,60 @@
+@startuml
+
+' participant VL [
+'             Vlaser
+'             ----
+'             Vlaser_ID: 0 for Bottom Package
+'             Vlaser_ID: 1 for T_tec_ld Package
+' ]
+
+participant SMCA7 [
+            AST2600
+            ----
+            A7 Core
+]
+
+participant SMCM3 [
+            AST2600
+            ----
+            M3 Core
+]
+
+participant Module [
+            Module
+            ----
+            Package: T_tec_ld / Bottom
+            ----
+            Tile_ID: 0-7 for Bottom Package
+            Tile_ID: 8-15 for T_tec_ld Package
+]
+
+
+
+=== ModuleReady:AutoReduction:LaserSafety <==> ModuleReady:Mission ==
+alt#Gold #LightSteelBlue Set Module to Mission State
+              SMCA7 -> SMCM3: CMD: MissionS True
+              SMCM3 -> Module: CMD: MissionS True
+              activate SMCM3
+              activate Module
+              Module --> Module: LD-DAC at ~Ild mA \n∀ tile in the package
+              Module --> Module: VOA-DAC at Ivoa mA \n∀ tile in the package
+              Module --> Module: Dither mode ON \n∀ tile in the package
+              SMCM3 -> Module: RegisterRead the Module State ∀ tile in the package \n(should be in Mission mode)
+              deactivate Module
+              SMCM3 -> SMCA7: Broadcast Module in Mission State
+              deactivate SMCM3
+else #LightPink Release Module from Mission to LaserSafety State
+              SMCA7 -> SMCM3: CMD: LaserSafetyS True
+              SMCM3 -> Module: CMD: LaserSafetyS True
+              activate SMCM3
+              activate Module
+              Module --> Module: Dither mode OFF \n∀ tile in the package
+              Module --> Module: VOA-DAC at 0 mA \n∀ tile in the package
+              Module --> Module: LD-DAC at 40 mA \n∀ tile in the package
+              SMCM3 -> Module: RegisterRead the Module State ∀ tile in the package \n(should be in LaserSafety mode)
+              deactivate Module
+              SMCM3 -> SMCA7: Broadcast Module in LaserSafety State
+              deactivate SMCM3
+end
+
+@enduml

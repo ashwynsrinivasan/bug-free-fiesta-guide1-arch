@@ -1,0 +1,199 @@
+@startuml
+' skinparam style strictuml
+' scale 200000*100000
+participant VPMIC [
+            VPMIC 
+]
+
+participant VIO [
+            VIO
+]
+
+participant VL [
+            Vlaser
+            ----
+            Vlaser_ID: 1-2
+]
+
+participant SMCA9 [
+            AST2600
+            ----
+            A9 Core
+]
+
+participant SMCM3 [
+            AST2600
+            ----
+            M3 Core
+]
+
+participant PKG [
+            Package
+            ----
+            Tile_ID: 1-8
+            ----
+            Package_ID: 1-2
+]
+
+
+
+==== Power On Mode to Low Power Mode  ==
+
+group#Gold #LightYellow Step 1: Bringup PMIC and IO 
+            SMCM3 -> SMCA9: CMD: bringup VPMIC and VIO
+            SMCA9 -> VPMIC: CMD: bringup regulators
+            VPMIC -> SMCA9: Broadcast regulators ON
+            SMCA9 -> VIO: CMD: bringup regulators
+            VIO -> SMCA9: Broadcast VIO ON
+            SMCA9 -> SMCM3: Broadcast VPMIC and VIO ON
+
+            SMCM3 -> PKG: Broadcast PMIC and IO Powered On
+            activate SMCM3
+            PKG -> SMCM3: Broadcast ackowledge PMIC and IO Powered On
+            SMCM3 --> SMCM3 : Wait for\n"Broadcast Ackowledge PMIC and IO Powered On" \nfrom all tiles
+            PKG -> SMCM3: Broadcast ackowledge PMIC and IO Powered On\n(CMD from the 8th Tile in the package)
+            deactivate SMCM3
+end
+
+group#Gold #LightYellow Step 2: Bringup Vlaser           
+            SMCM3 -> SMCA9: CMD: bringup Vlaser to 2.0V
+            SMCA9 -> VL: CMD: bringup Vlaser to 2.0V
+            VL -> SMCA9: Broadcast Vlaser set to 2.0V
+            SMCA9 -> SMCM3: Broadcast Vlaser set to 2.0V
+
+            SMCM3 -> PKG: CMD: Power On
+            activate SMCM3
+            PKG -> SMCM3: CMD: Target Vlaser = 2.5V
+            SMCM3 --> SMCM3 : Wait for \n"CMD: Target Vlaser = 2.5V" \nfrom all tiles
+            PKG -> SMCM3: CMD: Target Vlaser = 2.5V\n(CMD from the 8th Tile in the package)
+            deactivate SMCM3
+
+            SMCM3 -> SMCA9: CMD: Ramp Vlaser to 2.5V
+            SMCA9 -> VL: CMD: Ramp Vlaser to 2.5V
+            VL -> SMCA9: Broadcast Vlaser set to 2.5V
+            SMCA9 -> SMCM3: Broadcast Vlaser set to 2.5V
+
+            SMCM3 -> PKG: Broadcast Vlaser set to 2.5V
+            activate SMCM3
+            PKG -> SMCM3: Broadcast Acknowledge Tile Powered On
+            SMCM3 --> SMCM3 : Wait for \n"Broadcast Acknowledge Tile Powered On" \nfrom all tiles
+            PKG -> SMCM3: Broadcast Acknowledge Tile Powered On\n(CMD from the 8th Tile in the package)
+            deactivate SMCM3
+end
+
+=== Low Power Mode to Initialization Mode ==
+
+SMCM3 -> PKG: CMD: Init => Target Tile ID #1
+activate SMCM3
+SMCM3 -> PKG: CMD: Init => Target Tile ID #2
+SMCM3 --> SMCM3 : Send "CMD: Init" to all tiles
+SMCM3 -> PKG: CMD: Init => Target Tile ID #8
+deactivate SMCM3
+
+group#Gold #LightBlue Optimizing Vlaser for power consumption
+
+            SMCM3 -> PKG: Awaiting Vlaser_flag from all tiles in the package
+            activate SMCM3
+            PKG -> SMCM3: Broadcast Vlaser_flag for Tile ID #1
+            SMCM3 --> SMCM3 : Wait for \n"Broadcast Vlaser_flag" \nfrom all tiles in the package
+            PKG -> SMCM3: Broadcast Vlaser_flag for Tile ID #8\n(CMD from the 8th Tile in the package)            
+
+            SMCM3 -> SMCA9:  CMD: Drop Vlaser by 0.1V
+            SMCA9 -> VL: CMD: Drop Vlaser by 0.1V
+            VL -> SMCA9: Broadcast Vlaser dropped by 0.1V
+            SMCA9 -> SMCM3: Broadcast Vlaser dropped by 0.1V
+            SMCM3 -> PKG: Broadcast Vlaser dropped by 0.1V
+
+            group#Gold #LightGray Loop until Vlaser_flag transitioned from True to False
+                        SMCM3 -> PKG: Awaiting Vlaser_flag from all tiles in the package
+                        PKG -> SMCM3: Broadcast Vlaser_flag for Tile ID #1
+                        SMCM3 --> SMCM3 : Wait for \n"Broadcast Vlaser_flag" \nfrom all tiles in the package
+                        PKG -> SMCM3: Broadcast Vlaser_flag for Tile ID #8\n(CMD from the 8th Tile in the package)            
+
+                        alt#Gold #LightGreen Vlaser_flag = False
+                                    SMCM3 -> SMCA9:  CMD: Drop Vlaser by 0.1V
+                                    SMCA9 -> VL: CMD: Drop Vlaser by 0.1V
+                                    VL -> SMCA9: Broadcast Vlaser dropped by 0.1V
+                                    SMCA9 -> SMCM3: Broadcast Vlaser dropped by 0.1V
+                                    SMCM3 -> PKG: Broadcast Vlaser dropped by 0.1V
+                        else #Pink Vlaser_flag = True
+                                    SMCM3 -> SMCA9: CMD: Increase Vlaser by 0.1V
+                                    SMCA9 -> VL: CMD: Increase Vlaser by 0.1V
+                                    VL -> SMCA9: Broadcast Vlaser increased by 0.1V
+                                    SMCA9 -> SMCM3: Broadcast Vlaser increased by 0.1V
+                                    SMCM3 -> PKG: Broadcast Vlaser increased by 0.1V
+                        end
+            end
+
+            SMCM3 -> PKG: Broadcast Tile Initialized
+            PKG -> SMCM3: Broadcast Acknowledge Tile Initialized
+            deactivate SMCM3
+end
+
+=== Initialization Mode to Mission Mode ==
+
+SMCM3 -> PKG: CMD: Mission => Target Tile ID #1
+activate SMCM3
+SMCM3 --> SMCM3 : Send "CMD: Mission" to all tiles
+SMCM3 -> PKG: CMD: Mission => Target Tile ID #8
+PKG -> SMCM3: Broadcast Tile ID #1 Initialized
+SMCM3 --> SMCM3 : Wait for \n"Broadcast Acknowledge Tile ID Initialized" \nfrom all tiles
+PKG -> SMCM3: Broadcast Tile ID #8 Initialized\n(CMD from the 8th Tile in the package)
+deactivate SMCM3
+
+=== Mission Mode to Eye-safety Mode for a Target Tile ==
+SMCA9 -> SMCM3: CMD: Eye-safety => Target Tile ID #n\n(n = 1-8), for this example n = 1
+activate SMCM3
+SMCM3 -> PKG: CMD: Eye-safety => Target Tile ID #1
+PKG -> SMCM3: Broadcast Tile ID #1 in Eye-safety Mode
+SMCM3 -> SMCA9: Broadcast Tile ID #1 in Eye-safety Mode
+deactivate SMCM3
+
+=== Mission Mode to Power Off Mode ==
+group#Gold #LightSkyBlue Step1: Eye safety
+            SMCM3 -> PKG: CMD: Eye-safety => Target Tile ID #1
+            activate SMCM3
+            SMCM3 --> SMCM3 : Send "CMD: Eye-safety" to all tiles
+            SMCM3 -> PKG: CMD: Eye-safety => Target Tile ID #8
+            PKG -> SMCM3: Broadcast Tile ID #1 in Eye-safety Mode
+            SMCM3 --> SMCM3 : Wait for \n"Broadcast Tile ID in Eye-safety Mode" \nfrom all tiles
+            PKG -> SMCM3: Broadcast Tile ID #8 in Eye-safety Mode\n(CMD from the 8th Tile in the package)
+end
+
+group#Gold #LightSkyBlue Step2: Protect DAC
+            SMCM3 -> PKG: CMD: Power off => Target Tile ID #1
+            SMCM3 --> SMCM3 : Send "CMD: Power off" to all tiles
+            SMCM3 -> PKG: CMD: Power off => Target Tile ID #8
+
+            PKG -> SMCM3: CMD: Target Vlaser = 2.0V for Tile ID #1
+            SMCM3 --> SMCM3 : Wait for \n"CMD: Target Vlaser = 2.0V" \nfrom all tiles
+            PKG -> SMCM3: CMD: Target Vlaser = 2.0V\n(CMD from the 8th Tile in the package)
+
+            SMCM3 -> SMCA9: CMD: Set Vlaser = 2.0V
+            SMCA9 -> VL: CMD: Set Vlaser = 2.0V
+            VL -> SMCA9: Broadcast Vlaser set to 2.0V
+            SMCA9 -> SMCM3: Broadcast Vlaser set to 2.0V
+
+            SMCM3 -> PKG: Broadcast Vlaser set to 2.0V => Target Tile ID #1
+            SMCM3 --> SMCM3 : "Broadcast Vlaser set to 2.0V" to all tiles
+            SMCM3 -> PKG: Broadcast Vlaser set to 2.0V => Target Tile ID #8
+
+            PKG -> SMCM3: Broadcast tile ready to power off for Tile ID #1
+            SMCM3 --> SMCM3 : Wait for \n"Broadcast tile ready to power off" \nfrom all tiles
+            PKG -> SMCM3: Broadcast tile ready to power off\n(CMD from the 8th Tile in the package)
+end
+
+group#Gold #LightSkyBlue Step3: Power off
+            SMCM3 -> SMCA9: CMD: Set Vlaser = 0V
+            SMCA9 -> VL: CMD: Set Vlaser = 0V
+            VL -> SMCA9: Broadcast Vlaser set to 0V
+            SMCA9 -> SMCM3: Broadcast Vlaser set to 0V
+
+            SMCM3 -> SMCA9: CMD: Power off VPMIC and VIO
+            SMCA9 -> VPMIC: CMD: Power off regulators
+            VPMIC -> SMCA9: Broadcast regulators OFF
+            SMCA9 -> VIO: CMD: Power off regulators
+            VIO -> SMCA9: Broadcast VIO OFF
+            SMCA9 -> SMCM3: Broadcast VPMIC and VIO OFF
+end
+@enduml

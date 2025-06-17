@@ -1,0 +1,46 @@
+@startuml
+skinparam style strictuml
+scale 20000*10000
+participant SMC [
+            AST2600
+            ----
+            M3 Core
+]
+
+participant PKR [
+            Pikeriver
+            ----
+            Tile_ID: 1-8
+            ----
+            Package_ID: 1-2
+]
+
+participant TDRV [
+            TEC Driver
+            ----
+            LD_TEC_ID: 1-16
+            ----
+            MUX_TEC_ID: 1-16
+]
+
+== Eye-safety Mode to Power Off Mode ==
+
+SMC -> PKR: CMD: Power iff
+
+PKR -> SMC: Target Vlaser to 2.0V
+
+SMC --> SMC: Drop Vlaser to 2.0V
+
+SMC -> PKR ++: Broadcast Vlaser set to 2.0V
+
+PKR --> PKR: Drop LD DAC [1:16] to 0mA
+PKR -> TDRV: Power off LD and MUX TEC
+deactivate PKR
+
+PKR -> SMC: Tile ready to power off
+
+SMC <-- SMC ++: Drop Vlaser to 0V
+
+deactivate SMC
+
+@enduml

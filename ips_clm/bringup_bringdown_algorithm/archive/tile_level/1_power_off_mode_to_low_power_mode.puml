@@ -1,0 +1,51 @@
+@startuml
+skinparam style strictuml
+scale 20000*10000
+participant SMC [
+            AST2600
+            ----
+            M3 Core
+]
+
+participant PKR [
+            Pikeriver
+            ----
+            Tile_ID: 1-8
+            ----
+            Package_ID: 1-2
+]
+
+participant TDRV [
+            TEC Driver
+            ----
+            LD_TEC_ID: 1-16
+            ----
+            MUX_TEC_ID: 1-16
+]
+
+== Power Off Mode to Low Power Mode==
+SMC -> PKR: CMD: Power On
+
+PKR --> PKR ++ : Ramp LD DAC [1:16] targetting 50mA, \nstaggered by 10 us
+deactivate PKR
+
+
+PKR --> TDRV ++: Power on LD and MUX TEC
+activate PKR
+PKR <-- TDRV: Target LD Thermistor = 43C,\nTarget MUX Thermistor = 50C
+deactivate TDRV
+
+deactivate PKR
+
+PKR -> SMC: CMD: Target Vlaser = 2.5V
+
+
+SMC <-- SMC: Ramp Vlaser to 2.5V
+activate SMC
+deactivate SMC
+
+SMC -> PKR: Broadcast Vlaser set to 2.5V
+
+PKR -> SMC: Broadcast Tile Powered On
+
+@enduml

@@ -1,0 +1,63 @@
+@startuml
+
+
+participant SMCA7 [
+            AST2600
+            ----
+            A7 Core
+]
+
+participant SMCM3 [
+            AST2600
+            ----
+            M3 Core
+]
+
+participant Module [
+            Module
+            ----
+            Package: T_tec_ld / Bottom
+            ----
+            Tile_ID: 0-7 for Bottom Package
+            Tile_ID: 8-15 for T_tec_ld Package
+]
+
+
+=== ModuleReady:AutoReduction:LaserSafety <==> ModuleReady:AutoReduction:HandShake ==
+' note over VL: Vlop_max V
+group#Gold #LightSteelBlue Transition between ModuleReady:AutoReduction:LaserSafety and AutoReduction:HandShake State
+              SMCA7 -> SMCM3: CMD: Initiate HandShake
+              
+              SMCM3 -> Module: CMD: HandShakeS False
+              activate SMCM3
+              activate Module
+              note over SMCM3, Module: 10s begins
+
+              Module --> Module: VOA-DAC at 20 mA \n∀ tile in the package
+              note over Module: 200ms passed
+
+              Module --> Module: LD-DAC at 100 mA \n∀ tile in the package
+              note over Module: 600ms passed
+              
+              Module --> Module: LD-DAC at 140 mA\n∀ tile in the package
+              note over Module: 1300ms passed
+
+              Module --> Module: LD-DAC at 100 mA\n∀ tile in the package
+              note over Module: 1700ms passed
+              
+              Module --> Module: LD-DAC at 40 mA\n∀ tile in the package
+              note over Module: 1900ms passed
+
+
+              Module --> Module: VOA-DAC at 0mA \n∀ tile in the package
+              note over Module: 2100ms passed
+              
+              note over SMCM3, Module: 10s ends
+              SMCM3 -> Module: RegisterRead the Module State \n∀ tile in the package \n(should have completed HandShake sequence)
+              deactivate Module
+              
+              deactivate SMCM3
+end
+
+
+@enduml
