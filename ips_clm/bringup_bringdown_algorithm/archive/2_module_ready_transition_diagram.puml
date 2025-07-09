@@ -1,0 +1,99 @@
+@startuml
+
+participant VL [
+            Vlaser
+            ----
+            Vlaser_ID: 0 for Bottom Package
+            Vlaser_ID: 1 for T_tec_ld Package
+]
+
+participant SMCA7 [
+            AST2600
+            ----
+            A7 Core
+]
+
+participant SMCM3 [
+            AST2600
+            ----
+            M3 Core
+]
+
+participant Module [
+            Module
+            ----
+            Package: T_tec_ld / Bottom
+            ----
+            Tile_ID: 0-7 for Bottom Package
+            Tile_ID: 8-15 for T_tec_ld Package
+]
+
+
+=== ModuleReady:AutoReduction:LaserSafety <==> ModuleReady:AutoReduction:HandShake ==
+alt#Gold #LightGreen Set Module to Mission State
+              note over VL: 2.5ß V
+              SMCM3 -> Module: CMD: MissionS True
+              activate SMCM3
+              Module -> SMCM3: Broadcast Vlop from flash ∀ tile in the package
+              SMCM3 -> SMCA7: CMD: Set Vlaser to Vlop_max V
+              SMCA7 -> VL: CMD: Set Vlaser to Vlop_max V
+              note over VL: Vlop_max V
+              SMCA7 -> SMCM3: Broadcast Vlop V
+
+              SMCM3 -> Module: Broadcast Vlaser at Vlop_max V
+              activate Module
+              Module --> Module: LD-DAC at ~Ild mA \n∀ tile in the package
+              Module --> Module: VOA-DAC at Ivoa mA \n∀ tile in the package
+              Module --> Module: Dither mode ON \n∀ tile in the package
+              Module -> SMCM3: Broadcast Module in Mission State
+              deactivate Module
+              deactivate SMCM3
+else #LightPink Release Module from Mission to LaserSafety State
+              note over VL: Vlop_max V
+              SMCM3 -> Module: CMD: LaserSafetyS True
+              activate SMCM3
+              activate Module
+              alt#Gold #LightGray Type1: Default
+                            Module --> Module: LD-TEC locked at T_tec_ld C \n∀ tile in the package
+                            Module --> Module: LD-DAC at Ild_ls mA \n∀ tile in the package
+              else #LightSalmon Type2: Custom
+                            Module --> Module: LD-TEC locked at Tls C \n∀ tile in the package
+                            Module --> Module: LD-DAC at Ild_ls mA \n∀ tile in the package
+              end
+              Module -> SMCM3: Broadcast Module DACs lowered to LaserSafety levels
+              deactivate Module
+              SMCM3 -> SMCA7: CMD: Set Vlaser to 2.0 V
+              SMCA7 -> VL: CMD: Set Vlaser to 2.0 V
+              note over VL: 2.0 V
+              SMCA7 -> SMCM3: Broadcast Vlaser at 2.0 V
+              deactivate SMCM3
+end
+
+=== Mission <==> TileLaserSafety State ==
+alt#Gold #LightPink Set Tile to TileLaserSafety State
+              SMCM3 -> Module: CMD: TileLaserSafetyS True
+              activate SMCM3
+              activate Module
+              alt#Gold #LightGray Type1: Default
+                            Module --> Module: LD-TEC locked at T_tec_ld C
+                            Module --> Module: LD-DAC at Ild_ls mA
+              else #LightSalmon Type2: Custom
+                            Module --> Module: LD-TEC locked at Tls C
+                            Module --> Module: LD-DAC at Ild_ls mA
+              end
+              Module -> SMCM3: Broadcast Tile in TileLaserSafety State
+              deactivate Module
+              deactivate SMCM3
+else #LightGreen Release Tile from TileLaserSafety to Mission State
+              SMCM3 -> Module: CMD: MissionS True
+              activate SMCM3
+              activate Module
+              Module --> Module: LD-DAC at ~Ild mA
+              Module --> Module: VOA-DAC at Ivoa mA
+              Module --> Module: Dither mode ON
+              Module -> SMCM3: Broadcast Tile DACs at Mission levels
+              deactivate Module
+              deactivate SMCM3
+end
+
+@enduml

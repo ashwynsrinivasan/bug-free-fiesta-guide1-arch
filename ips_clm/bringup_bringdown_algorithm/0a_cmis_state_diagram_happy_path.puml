@@ -1,0 +1,114 @@
+@startuml
+skinparam SequenceMessageAlignment center
+skinparam SequenceReferenceAlignment center
+skinparam classFontSize 20
+skinparam Dpi 10000
+' skinparam ClassFontName Helvetica
+
+PowerOff: VPMIC, VIO, VTECDRV, VLASER OFF
+
+PowerOff --> Reset : PowerOnS True
+Reset --> PowerOff : PowerOnS False
+Reset: VPMIC, VIO, VTECDRV ON; VLASER OFF
+Reset: ∀ tiles to be held in Reset
+
+Reset --> ModuleLowPwr: ResetS False
+ModuleLowPwr: VPMIC, VIO, VTECDRV ON, VLASER OFF
+ModuleLowPwr: ∀ tiles to be released from Reset
+
+ModuleLowPwr --> Reset: ResetS True
+
+' Reset --> ModuleSelfTest: ResetS False
+' ModuleSelfTest --> Reset: ResetS True
+
+ModuleLowPwr --> ModuleSelfTest: ModuleSelfTestS True
+ModuleSelfTest --> ModuleLowPwr: ModuleSelfTestS False
+
+
+ModuleSelfTest: VPMIC, VIO, VTECDRV ON, VLASER at V_LASER_pkg V
+ModuleSelfTest: \nFW Communication Tests
+ModuleSelfTest: \nFW Tests around LD-DAC, VOA-DAC, LD-TEC, MUX-TEC
+
+' ModuleReady --> ModuleSelfTest: ModuleSelfTestS True
+' ModuleSelfTest --> ModuleReady: ModuleSelfTestS False
+
+' ModuleLowPwr --> ModuleCalibrate: ModuleCalibrateS True
+' ModuleCalibrate --> ModuleLowPwr: ModuleCalibrateS False
+
+' Reset --> ModuleCalibrate: ResetS False
+' ModuleSelfTest --> Reset: ResetS True
+
+' ModuleCalibrate: VPMIC, VIO, VTECDRV ON, VLASER at 2.5 V
+' ModuleCalibrate: \nFW Calibration for MUX-TEC, LD-TEC \n(Determine V_tec_mux, V_tec_laser, T_op_multi_ch)
+' ModuleCalibrate: \nFW Calibration for LD-DAC and VOA-DAC \n(Detrmine I_laser and I_voa) 
+' ModuleCalibrate: \nFW Calibration for V_LASER \n(Determine V_LASER_pkg)
+
+AnyState --> Reset: ResetS True
+AnyState: ∀ states ∈ \n{Poweroff, ModuleLowPwr, ModuleReady}
+
+ModuleLowPwr --> ModuleReady: LowPwrS False
+ModuleReady --> ModuleLowPwr: LowPwrS True
+
+state ModuleReady {
+            ' [*] --> AutoReduction: AutoReductionS True
+
+            ' state AutoReduction {
+            '   AutoReduction: VPMIC, VIO, VTECDRV ON, VLASER at V_LASER_pkg V\nLD-TEC locked at T_op_multi_ch C, MUX-TEC locked at 50 C and dither mode OFF ∀ tiles
+            '   state LaserSafety {
+            '     LaserSafety: LD-DAC at 40 mA, 
+            '     LaserSafety: VOA-DAC at 0 mA \n∀ tile in the package
+            '   }
+
+            '   state HandShake {
+            '     HandShake: LD-DAC at 150 mA,
+            '     HandShake: VOA-DAC at 20 mA \n∀ tile in the package
+            '   }
+              
+            '   LaserSafety -> HandShake: HandShakeS True
+            '   HandShake -> LaserSafety
+            ' }
+
+            ' AutoReduction --> Mission: AutoReductionS False
+
+            ' Mission --> AutoReduction: AutoReductionS True
+            ' Mission: VPMIC, VIO, VTECDRV ON, VLASER at V_LASER_pkg V\nLD-TEC locked at T_op_multi_ch C, MUX-TEC locked at 50 C and dither mode ON ∀ tiles
+            ' Mission: ∀ LD-DAC at I_laser and VOA-DAC at I_voa mA
+
+            ' state TileAutoReduction {  
+            '  TileAutoReduction: VPMIC, VIO, VTECDRV ON, VLASER at V_LASER_pkg V\nLD-TEC locked at T_op_multi_ch C, MUX-TEC locked at 50 C and dither mode OFF
+            '  state TileLaserSafety {
+            '     TileLaserSafety: LD-DAC at 40 mA
+            '     TileLaserSafety: VOA-DAC at 0 mA
+            '   }
+
+            '   state TileHandShake {
+            '     TileHandShake: LD-DAC at 150 mA
+            '     TileHandShake: VOA-DAC at 20 mA
+            '   }
+              
+            '   TileLaserSafety -> TileHandShake: TileHandShakeS True
+            '   TileHandShake -> TileLaserSafety
+            ' }
+
+            ' Mission --> TileAutoReduction: TileAutoReductionS True
+            ' TileAutoReduction --> Mission: TileAutoReductionS False
+
+            ' Mission --> TileReset: TileResetS True
+            ' TileReset --> Mission: TileResetS False
+
+            ' TileAutoReduction --> TileReset: TileResetS True
+            ' TileReset --> TileAutoReduction: TileResetS False
+
+            ' state TileReset {
+            '   TileReset: VPMIC, VIO, VTECDRV ON, VLASER at V_LASER_pkg V\nLD-TEC and MUX-TEC unlocked
+            '   TileReset: ∀ tiles to be held in Reset
+            ' }
+
+            ModuleReady: V_LASER_tile, V_LASER_pkg, V_tec_mux, V_tec_laser, I_laser, I_voa & T_op_multi_ch: \ncalibration setpoints from manufacturing tests.
+            ModuleReady: \nV_LASER_pkg: stored in EEPROM on SEARRAY Connector Board.
+            ModuleReady: \nRemaining calibration points will stored in Pikeriver's Flash (Tile) and EEPROM (SEARRAY Connector Board).\n(FW-team to confirm in duplicating the data)
+}
+
+
+
+@enduml

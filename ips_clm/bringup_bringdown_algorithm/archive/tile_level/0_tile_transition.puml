@@ -1,0 +1,168 @@
+@startuml
+skinparam style strictuml
+scale 20000*10000
+participant SMC [
+            AST2600
+            ----
+            M3 Core
+]
+
+participant PKR [
+            Pikeriver
+            ----
+            Tile_ID: 1-8
+            ----
+            Package_ID: 1-2
+]
+
+participant TDRV [
+            TEC Driver
+            ----
+            LD_TEC_ID: 1-16
+            ----
+            MUX_TEC_ID: 1-16
+]
+
+== Power Off Mode to Low Power Mode==
+SMC -> PKR: CMD: Power On
+
+PKR --> PKR ++ : Ramp LD DAC [1:16] targetting 50mA, \nstaggered by 10 us
+deactivate PKR
+
+
+PKR --> TDRV ++: Power on LD and MUX TEC
+activate PKR
+PKR <-- TDRV: Target LD Thermistor = 43C,\nTarget MUX Thermistor = 50C
+deactivate TDRV
+
+deactivate PKR
+
+PKR -> SMC: CMD: Target Vlaser = 2.5V
+
+
+SMC <-- SMC: Ramp Vlaser to 2.5V
+activate SMC
+deactivate SMC
+
+SMC -> PKR: Broadcast Vlaser set to 2.5V
+
+PKR -> SMC: Broadcast Tile Powered On
+
+== Low Power Mode to Initialization Mode==
+
+SMC -> PKR: CMD: Init
+
+PKR --> PKR ++ : Ramp LD DAC [1:16] from 50 to 145 mA,\nstaggered by 10 us
+deactivate PKR
+
+loop#Gold #LightGoldenRodYellow Identify LD Top Temperature
+    PKR -> TDRV: Sweep LD TEC from 25 to 60C (steps of 0.1C) at 1C/s\nMUX TEC is maintained at 50C
+    activate PKR
+    activate TDRV
+    PKR --> PKR: Record MUX MPD [1, 8, 9, 16] \n for each temperature step
+    PKR --> PKR: Determine LD operating temperature (LD_Top) for\nMUX MPD [1] + [8] + [9] + [16] is highest
+    PKR --> PKR: Store LD_Top into Flash
+    TDRV -> PKR: TEC at LD_Top
+    deactivate TDRV
+    deactivate PKR
+end
+
+PKR --> PKR ++: Record LD MPD [1:16] \nSet Vlaser_tileid_packageid_flag = False
+deactivate PKR
+
+PKR -> SMC: Broadcast Vlaser_titleid_packageid_flag
+loop#Gold #LightGrey Optimizing Vlaser for package level power consumption
+    loop#Gold #LightBlue Increase Vlaser by 0.1 V
+        SMC -> PKR: Broadcast Vlaser up
+        activate SMC
+        activate PKR
+        PKR --> PKR: Record LD MPD [1:16]
+        PKR --> PKR: If any LD MPD [1:16] drops,\nset Vlaser_tileid_packageid_flag = True,\nelse False
+        PKR -> SMC: Broadcast Vlaser_tileid_packageid_flag
+        deactivate PKR
+    end
+    loop#Gold #Pink Decrease Vlaser by 0.1 V
+        SMC -> PKR: Broadcast Vlaser up
+        activate PKR
+        PKR --> PKR: Record LD MPD [1:16]
+        PKR --> PKR: If any LD MPD [1:16] drops,\nset Vlaser_tileid_packageid_flag = True,\nelse False
+        PKR -> SMC: Broadcast Vlaser_tileid_packageid_flag
+    end
+
+    SMC -> PKR: Broadcast Tile Initialized
+    PKR -> SMC: Broadcast Acknowledge Tile Initialized
+
+    deactivate PKR
+    deactivate SMC
+end
+
+
+== Initialization Mode to Mission Mode ==
+
+SMC -> PKR: CMD: Mission
+
+loop#Gold #LightGreen Dither Locking     
+    PKR --> TDRV ++: PID lock LD and MUX TEC
+    activate PKR
+    PKR --> PKR: Activate peak locking with drive current tuning
+    TDRV --> PKR: LD TEC at LD_Top, MUX TEC at 50C
+    deactivate TDRV
+    deactivate PKR
+end
+
+PKR -> SMC: Broadcast Tile in Mission Mode
+
+== Mission Mode to Eye-safety Mode ==
+
+SMC -> PKR: CMD: Eye-safety
+
+PKR -> TDRV: PID lock LD and MUX TEC
+activate PKR
+activate TDRV
+PKR --> PKR:  Deactivate peak locking with driver current tuning
+
+PKR --> PKR: Drop LD DAC [1:16] to 50mA
+TDRV -> PKR: LD TEC at LD_Top, MUX TEC at 50C
+deactivate TDRV
+deactivate PKR
+
+PKR -> SMC: Broadcast Tile in Eye-safety Mode
+
+== Eye-safety Mode to Mission Mode ==
+
+SMC -> PKR: CMD: Mission
+
+PKR -> TDRV: PID lock LD and MUX TEC
+activate TDRV
+activate PKR
+PKR --> PKR: Increase LD DAC [1:16] from 50mA to 145mA
+PKR --> PKR: Activate peak locking with driver current tuning
+TDRV -> PKR: LD TEC at LD_Top, MUX TEC at 50C
+deactivate TDRV
+deactivate PKR
+
+PKR -> SMC: Broadcast Tile in Mission Mode
+
+== Eye-safety Mode to Power Off Mode ==
+
+SMC -> PKR: CMD: Power iff
+
+PKR -> SMC: Target Vlaser to 2.0V
+
+SMC --> SMC: Drop Vlaser to 2.0V
+
+SMC -> PKR ++: Broadcast Vlaser set to 2.0V
+
+PKR --> PKR: Drop LD DAC [1:16] to 0mA
+PKR -> TDRV: Power off LD and MUX TEC
+deactivate PKR
+
+PKR -> SMC: Tile ready to power off
+
+
+
+SMC <-- SMC ++: Drop Vlaser to 0V
+
+deactivate SMC
+
+@enduml

@@ -1,0 +1,87 @@
+@startuml
+
+' participant VL [
+'             Vlaser
+'             ----
+'             Vlaser_ID: 0 for Bottom Package
+'             Vlaser_ID: 1 for T_tec_ld Package
+' ]
+
+participant SMCA7 [
+            AST2600
+            ----
+            A7 Core
+]
+
+participant SMCM3 [
+            AST2600
+            ----
+            M3 Core
+]
+
+participant Module [
+            Module
+            ----
+            Package: T_tec_ld / Bottom
+            ----
+            Tile_ID: 0-7 for Bottom Package
+            Tile_ID: 8-15 for T_tec_ld Package
+]
+
+=== Mission <==> TileLaserSafety State ==
+alt#Gold #LightSteelBlue Set Tile to ModuleReady:TileAutoReduction:TileLaserSafety State
+              SMCA7 -> SMCM3: CMD: Initiate \nTileAutoReduction:TileLaserSafety \n(for specific TUT - Tile-Under-Test)
+              SMCM3 -> Module: CMD: TileLaserSafetyS True \n(for specific TUT - Tile-Under-Test)
+              activate SMCM3
+              activate Module
+              Module --> Module: LD-DAC at 40 mA for TUT
+              SMCM3 -> Module: RegisterRead TUT to verify \nif tille is in TileLaserSafety State
+              deactivate Module
+              deactivate SMCM3
+else #LightPink Release Tile from TileLaserSafety to Mission State
+              SMCA7 -> SMCM3: CMD: Release \nTileAutoReduction:TileLaserSafety \n(for specific TUT - Tile-Under-Test)
+              SMCM3 -> Module: CMD: TileAutoReductionS False \n(for specific TUT - Tile-Under-Test)
+              activate SMCM3
+              activate Module
+              Module --> Module: LD-DAC at ~Ild mA
+              Module --> Module: VOA-DAC at Ivoa mA
+              Module --> Module: Dither mode ON
+              Module -> SMCM3: Broadcast Tile DACs at Mission levels
+              deactivate Module
+              deactivate SMCM3
+end
+group#Gold #LightSteelBlue Transition between ModuleReady:TileAutoReduction:TileLaserSafety and \nModuleReady:TileAutoReduction:TileHandShake State
+              SMCA7 -> SMCM3: CMD: Initiate \nTileAutoReduction:TileHandShake \n(for specific TUT - Tile-Under-Test)
+              
+              SMCM3 -> Module: CMD: TileHandShakeS True \n(for specific TUT - Tile-Under-Test)
+              activate SMCM3
+              activate Module
+              note over SMCM3, Module: 10s begins
+
+              Module --> Module: VOA-DAC at 20 mA \nfor specific TUT
+              note over Module: 200ms passed
+
+              Module --> Module: LD-DAC at 100 mA \nfor specific TUT
+              note over Module: 600ms passed
+              
+              Module --> Module: LD-DAC at 140 mA\nfor specific TUT
+              note over Module: 1300ms passed
+
+              Module --> Module: LD-DAC at 100 mA\nfor specific TUT
+              note over Module: 1700ms passed
+              
+              Module --> Module: LD-DAC at 40 mA\nfor specific TUT
+              note over Module: 1900ms passed
+
+
+              Module --> Module: VOA-DAC at 0mA \nfor specific TUT
+              note over Module: 2100ms passed
+              
+              note over SMCM3, Module: 10s ends
+              SMCM3 -> Module: RegisterRead the TUT tile State \n(should have completed HandShake sequence)
+              deactivate Module
+              
+              deactivate SMCM3
+end
+
+@enduml

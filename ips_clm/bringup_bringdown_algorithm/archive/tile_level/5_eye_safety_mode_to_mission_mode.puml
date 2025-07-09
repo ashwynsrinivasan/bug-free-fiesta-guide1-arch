@@ -1,0 +1,43 @@
+@startuml
+skinparam style strictuml
+scale 20000*10000
+participant SMC [
+            AST2600
+            ----
+            M3 Core
+]
+
+participant PKR [
+            Pikeriver
+            ----
+            Tile_ID: 1-8
+            ----
+            Package_ID: 1-2
+]
+
+participant TDRV [
+            TEC Driver
+            ----
+            LD_TEC_ID: 1-16
+            ----
+            MUX_TEC_ID: 1-16
+]
+
+== Eye-safety Mode to Mission Mode ==
+
+SMC -> PKR: CMD: Mission
+
+PKR -> TDRV: PID lock LD and MUX TEC
+activate TDRV
+activate PKR
+PKR --> PKR: Increase LD DAC [1:16] from 50mA to 145mA
+PKR --> PKR: Activate peak locking with driver current tuning
+TDRV -> PKR: LD TEC at LD_Top, MUX TEC at 50C
+deactivate TDRV
+deactivate PKR
+
+PKR -> SMC: Broadcast Tile in Mission Mode
+
+
+
+@enduml

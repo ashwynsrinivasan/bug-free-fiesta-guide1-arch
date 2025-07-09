@@ -1,0 +1,160 @@
+@startuml
+skinparam classFontSize 20
+skinparam Dpi 1200
+<style>
+timingDiagram {
+  .red {
+    LineColor red
+    LineThickness 4
+  }
+  .blue {
+    LineColor blue
+    LineThickness 4
+  }
+  .yellow {
+    LineColor DarkGoldenRod
+    LineThickness 4
+  }
+  .Orange {
+    LineColor Orange
+    LineThickness 4
+  }
+  .Green {
+    LineColor Green
+    LineThickness 4
+  }
+  .Salmon {
+    LineColor Salmon
+    LineThickness 4
+  }
+}
+</style>
+analog "Fiber Power\n(dBm)" as OPF <<Green>>
+analog "LD DAC\n(mA)" as LD_DAC <<red>>
+analog "VOA DAC\n(mA)" as VOA_DAC <<blue>>
+robust "LD TEC\n(C)" as LD_TEC <<yellow>>
+analog "MUX TEC\n(C)" as MUX_TEC <<Orange >>
+
+robust "AutoReduction " as MRA <<Salmon>>
+
+@0
+MRA is "LaserSafety to\nHandShake"
+OPF is -7.5
+LD_DAC is 40
+VOA_DAC is 0
+LD_TEC is T_ld_tec
+MUX_TEC is 50
+
+' @50
+' MRA is "LaserSafety -> HandShake"
+' OPF is -7.5
+' LD_DAC is 40
+' VOA_DAC is 0
+' LD_TEC is T_ld_tec
+' MUX_TEC is 50
+
+@100
+MRA is "LaserSafety to\nHandShake"
+OPF is -10.5
+LD_DAC is 40
+VOA_DAC is 20
+LD_TEC is T_ld_tec
+MUX_TEC is 50
+
+@200
+MRA is "LaserSafety to\nHandShake"
+OPF is -10.5
+LD_DAC is 40
+VOA_DAC is 20
+LD_TEC is T_ld_tec
+MUX_TEC is 50
+
+@300
+MRA is "LaserSafety to\nHandShake"
+OPF is 3.5
+LD_DAC is 100
+VOA_DAC is 20
+LD_TEC is T_ld_tec
+MUX_TEC is 50
+
+@600
+MRA is "HandShake"
+OPF is 3.5
+LD_DAC is 100
+VOA_DAC is 20
+LD_TEC is T_ld_tec
+MUX_TEC is 50
+
+@700
+MRA is "HandShake"
+OPF is 17.5
+LD_DAC is 145
+VOA_DAC is 20
+LD_TEC is T_ld_tec
+MUX_TEC is 50
+
+@1200
+MRA is "HandShake"
+OPF is 17.5
+LD_DAC is 145
+VOA_DAC is 20
+LD_TEC is T_ld_tec
+MUX_TEC is 50
+
+@1300
+MRA is "HandShake to\nLaserSafety"
+OPF is 3.5
+LD_DAC is 100
+VOA_DAC is 20
+LD_TEC is T_ld_tec
+MUX_TEC is 50
+
+@1600
+MRA is "HandShake to\nLaserSafety"
+OPF is 3.5
+LD_DAC is 100
+VOA_DAC is 20
+LD_TEC is T_ld_tec
+MUX_TEC is 50
+
+@1700
+MRA is "HandShake to\nLaserSafety"
+OPF is -10.5
+LD_DAC is 40
+VOA_DAC is 20
+LD_TEC is T_ld_tec
+MUX_TEC is 50
+
+@1800
+MRA is "HandShake to\nLaserSafety"
+OPF is -10.5
+LD_DAC is 40
+VOA_DAC is 20
+LD_TEC is T_ld_tec
+MUX_TEC is 50
+
+@1900
+MRA is "LaserSafety"
+OPF is -7.5
+LD_DAC is 40
+VOA_DAC is 0
+LD_TEC is T_ld_tec
+MUX_TEC is 50
+
+@2000
+MRA is "LaserSafety"
+OPF is -7.5
+LD_DAC is 40
+VOA_DAC is 0
+LD_TEC is T_ld_tec
+MUX_TEC is 50
+
+
+highlight 0 to 200: Ramp VOA up
+highlight 200 to 600: Intermediate Power
+highlight 600 to 1300: Pulse for Handshake
+highlight 1300 to 1700: Intermediate Power
+highlight 1700 to 1900: Ramp VOA down
+highlight 1900 to 2100: LaserSafety
+
+@enduml

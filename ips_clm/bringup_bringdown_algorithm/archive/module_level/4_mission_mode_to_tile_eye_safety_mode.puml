@@ -1,0 +1,57 @@
+@startuml
+' skinparam style strictuml
+' scale 200000*100000
+' participant VPMIC [
+'             VPMIC 
+' ]
+
+' participant VIO [
+'             VIO
+' ]
+
+' participant VL [
+'             Vlaser
+'             ----
+'             Vlaser_ID: 1-2
+' ]
+
+participant SMCA9 [
+            AST2600
+            ----
+            A9 Core
+]
+
+participant SMCM3 [
+            AST2600
+            ----
+            M3 Core
+]
+
+participant PKG [
+            Package
+            ----
+            Tile_ID: 1-8
+            ----
+            Package_ID: 1-2
+]
+
+' === Initialization Mode to Mission Mode ==
+
+' SMCM3 -> PKG: CMD: Mission => Target Tile ID #1
+' activate SMCM3
+' SMCM3 --> SMCM3 : Send "CMD: Mission" to all tiles
+' SMCM3 -> PKG: CMD: Mission => Target Tile ID #8
+' PKG -> SMCM3: Broadcast Tile ID #1 Initialized
+' SMCM3 --> SMCM3 : Wait for \n"Broadcast Acknowledge Tile ID Initialized" \nfrom all tiles
+' PKG -> SMCM3: Broadcast Tile ID #8 Initialized\n(CMD from the 8th Tile in the package)
+' deactivate SMCM3
+
+=== Mission Mode to Eye-safety Mode for a Target Tile ==
+SMCA9 -> SMCM3: CMD: Eye-safety => Target Tile ID #n\n(n = 1-8), for this example n = 1
+activate SMCM3
+SMCM3 -> PKG: CMD: Eye-safety => Target Tile ID #1
+PKG -> SMCM3: Broadcast Tile ID #1 in Eye-safety Mode
+SMCM3 -> SMCA9: Broadcast Tile ID #1 in Eye-safety Mode
+deactivate SMCM3
+
+@enduml

@@ -1,0 +1,131 @@
+@startuml
+
+<style>
+timingDiagram {
+  .red {
+    LineColor red
+    LineThickness 4
+  }
+  .blue {
+    LineColor blue
+    LineThickness 4
+  }
+  .yellow {
+    LineColor DarkGoldenRod
+    LineThickness 4
+  }
+  .Orange {
+    LineColor Salmon
+    LineThickness 4
+  }
+}
+</style>
+
+analog "VIO" as VIO <<red>>
+analog "VPMIC" as VPMIC <<blue>>
+analog "VTECDRV" as VTECDRV <<yellow>>
+analog "Vlaser" as VL << Orange >>
+robust "ModuleStateMachine" as MSM
+concise "CMISCommand" as CMIS
+
+MSM is "PowerOFF"
+VIO is 0
+VPMIC is 0
+VTECDRV is 0
+VL is 0
+
+@0
+CMIS is {-}
+CMIS -> MSM: PowerON True
+MSM is "Reset"
+
+
+VIO is 0
+VPMIC is 0
+VTECDRV is 0
+VL is 0
+
+@10
+CMIS is {-}
+VIO is 3.3
+VPMIC is 2.5
+VTECDRV is 3.5
+VL is 0
+
+@20
+CMIS is {-}
+CMIS -> MSM: \nModuleLowPwrS True
+MSM is "ModuleLowPwr"
+VL is 2.5
+
+' @25
+' CMIS is {-}
+
+@40
+CMIS is {-}
+CMIS -> MSM: LaserSafetyS True or\nModuleReadyS True
+MSM is "ModuleReady: LaserSafety"
+' VL is 0
+
+' @50
+' CMIS is {-}
+' ' VL is 2
+
+@60
+CMIS is {-}
+CMIS -> MSM: MissionS True
+MSM is "ModuleReady: Mission"
+' VL is 2.0
+
+' @65
+' CMIS is {-}
+' ' VL is 2.5
+
+@100
+CMIS is {-}
+CMIS -> MSM: LaserSafetyS True
+MSM is "ModuleReady: LaserSafety"
+' VL is 2.5
+
+' @110
+' CMIS is {-}
+' ' VL is 2.0
+
+@120
+CMIS is {-}
+CMIS -> MSM: ModuleLowPwrS True
+MSM is "ModuleLowPwr"
+' VL is 2.0
+
+' @130
+' CMIS is {-}
+' ' VL is 0
+
+@140
+CMIS is "CMD"
+CMIS -> MSM: PowerOFF True
+MSM is "PowerOFF"
+VL is 2.5
+VPMIC is 2.5
+VTECDRV is 3.5
+VIO is 3.3
+
+@150
+CMIS is {-}
+VL is 0
+VPMIC is 2.5
+VTECDRV is 3.5
+VIO is 3.3
+
+@160
+CMIS is {-}
+VL is 0
+VPMIC is 0
+VTECDRV is 0
+VIO is 0
+
+highlight 0 to 60: Module Bring up
+highlight 60 to 100: Mission 
+highlight 100 to 170 : Module Bring down
+
+@enduml

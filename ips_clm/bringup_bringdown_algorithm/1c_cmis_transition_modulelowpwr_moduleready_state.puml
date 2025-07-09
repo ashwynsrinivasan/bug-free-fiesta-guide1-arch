@@ -1,0 +1,83 @@
+@startuml
+skinparam classFontSize 20
+skinparam Dpi 1200
+' participant VPMIC [
+'             VPMIC 
+' ]
+
+' participant VIO [
+'             VIO
+' ]
+
+participant VL [
+            Vlaser
+            ----
+            Vlaser_ID: 0
+            for Bottom Package
+            ----
+            Vlaser_ID: 1
+            for T_tec_ld Package
+]
+
+' participant VTECDRV [
+'             VTECDRV
+' ]
+
+participant SMCA7 [
+            AST2600
+            ----
+            A7 Core
+]
+
+participant SMCM3 [
+            AST2600
+            ----
+            M3 Core
+]
+
+participant Module [
+            Module
+            ----
+            Package: T_tec_ld / Bottom
+            ----
+            Tile_ID: 0-7
+            for Bottom Package
+            ----
+            Tile_ID: 8-15
+            for T_tec_ld Package
+]
+
+=== ModuleLowPwr <==> ModuleReady State ==
+alt#Gold #LightSteelBlue Set Module to ModuleReady:AutoReduction:LaserSafety State
+              ' note over Module: LaserSafety State for Module must be of \nType1 or Type2 or Type3 \ndetermined before manufacturing tests
+              
+              SMCM3 -> Module: Read Vlop from flash \n∀ tile in the package
+              SMCM3 -> SMCA7: CMD: Set Vlaser to Vlop_max V
+              SMCA7 -> VL: CMD: Set Vlaser to Vlop_max V
+              note over VL: Vlop_max V
+              SMCA7 -> SMCM3: Broadcast Vlop V
+              SMCM3 -> Module: Broadcast Vlaser at Vlop_max V
+              SMCM3 -> Module: CMD: LaserSafetyS True\nTarget first tile\n(#0 for Bottom package or #8 for T_tec_ld package)
+              activate SMCM3
+              activate Module
+              Module --> Module: MUX-TEC locked at 50 C \n∀ tile in the package
+              Module --> Module: LD-TEC locked at T_tec_ld C \n∀ tile in the package
+              Module --> Module: LD-DAC at 40 mA \n∀ tile in the package
+              SMCM3 -> Module: Register read if tile is in LaserSafety State\nfor all tiles in the package
+              deactivate Module
+              deactivate SMCM3
+else #LightPink Release Module from ModuleReady:AutoReduction:LaserSafety to ModuleLowPr State
+              SMCM3 -> Module: CMD: LowPwrS True
+              activate SMCM3
+              activate Module
+              Module --> Module: LD-DAC at 0 mA \n∀ tile in the package
+              Module --> Module: VOA-DAC at 0 mA \n∀ tile in the package
+              Module --> Module: LD-TEC and MUX-TEC unlocked \n∀ tile in the package
+              SMCM3 -> Module: Register read if tile is in LowPwr State\nfor all tiles in the package
+              deactivate Module
+              deactivate SMCM3
+
+end
+
+
+@enduml

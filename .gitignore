@@ -1,0 +1,17 @@
+*.nc
+*.csv
+*.log
+*.xlsx
+*__pycache__*
+*/__pycache__/*
+*.ipynb_checkpoints/*
+*.DS_Store
+*.tiff
+*.yaml
+*.hdf5
+*.dat
+*.npz
+*.pkl
+*.rar
+*.html
+*.png
