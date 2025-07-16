@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-TP1-1 Combined Test and Top Data Analysis Script
+TP1-3 Combined Test and Top Data Analysis Script
 ================================================
 
-This script analyzes both Test and Top data from TP1-1 test point.
+This script analyzes both Test and Top data from TP1-3 test point.
 It produces all plots from the Test workflow, and annotates the wavelength_vs_tile_combined plot
 with T_op values from the Top data for each tile and temperature.
 All measurements were performed at 150mA laser current.
@@ -30,11 +30,11 @@ plt.style.use('default')
 plt.rcParams['figure.figsize'] = (12, 8)
 plt.rcParams['font.size'] = 10
 
-class TP1P1CombinedAnalyzer:
+class TP1P3CombinedAnalyzer:
     def __init__(self, test_data_path=None, top_data_path=None):
         script_dir = Path(__file__).parent
-        self.test_data_path = Path(test_data_path) if test_data_path else script_dir / "../TP1-1"
-        self.top_data_path = Path(top_data_path) if top_data_path else script_dir / "../TP1-1"
+        self.test_data_path = Path(test_data_path) if test_data_path else script_dir / "../TP1-3"
+        self.top_data_path = Path(top_data_path) if top_data_path else script_dir / "../TP1-3"
         self.output_dir = script_dir / "plots"
         self.output_dir.mkdir(exist_ok=True)
         self.data_dir = script_dir / "data"
@@ -46,18 +46,18 @@ class TP1P1CombinedAnalyzer:
         self.tile_metadata = {}  # Store metadata for each tile
 
     def extract_serial_number(self, filename):
-        match = re.search(r'-Y(\d+)-TP1-1 (Test|Top)\.csv$', filename)
+        match = re.search(r'-Y(\d+)-TP1-3(?:\s+Top)?\.csv$', filename)
         if match:
             return f"Y{match.group(1)}"
         return None
 
     def load_test_files(self):
-        self.test_files = sorted(glob.glob(str(self.test_data_path / "* Test.csv")))
+        self.test_files = sorted(glob.glob(str(self.test_data_path / "*-TP1-3.csv")))
         print(f"Found {len(self.test_files)} Test CSV files")
         return self.test_files
 
     def load_top_files(self):
-        self.top_files = sorted(glob.glob(str(self.top_data_path / "* Top.csv")))
+        self.top_files = sorted(glob.glob(str(self.top_data_path / "*-TP1-3 Top.csv")))
         print(f"Found {len(self.top_files)} Top CSV files")
         return self.top_files
 
@@ -107,8 +107,19 @@ class TP1P1CombinedAnalyzer:
             self.test_data['Time'] = pd.to_datetime(self.test_data['Time'], format='mixed', errors='coerce')
             self.test_data = self.test_data.dropna(subset=['Time'])
             self.test_data = self.test_data.sort_values('Time', axis=0)
+            
+            # Add temperature labeling per tile
+            self.assign_temperature_labels_per_tile()
+            
             print(f"Combined test data shape: {self.test_data.shape}")
             print(f"Captured metadata for {len(self.tile_metadata)} tiles")
+            
+            # Show temperature label distribution
+            if 'Temp_Label' in self.test_data.columns:
+                temp_label_counts = self.test_data['Temp_Label'].value_counts()
+                print("Temperature label distribution:")
+                for temp_label, count in temp_label_counts.items():
+                    print(f"  {temp_label}: {count} data points")
         else:
             print("No test data loaded successfully")
 
@@ -171,12 +182,67 @@ class TP1P1CombinedAnalyzer:
         top_val = top_data['value'].iloc[0] if not top_data.empty else None  # type: ignore
         return top_val
 
+    def get_temperature_bin(self, temp):
+        """Convert actual temperature to temperature bin."""
+        if temp < 42:
+            return 40  # Low temperature bin
+        elif temp < 48:
+            return 45  # Medium temperature bin
+        else:
+            return 50  # High temperature bin
+    
+    def get_temperature_bin_label(self, temp_bin):
+        """Convert temperature bin to label."""
+        if temp_bin == 40:
+            return "~40°C"
+        elif temp_bin == 45:
+            return "~45°C"
+        else:
+            return "~50°C"
+
+    def assign_temperature_labels_per_tile(self):
+        """Assign relative temperature labels for each tile based on their measured temperatures."""
+        if self.test_data is None:
+            return
+            
+        for tile in self.test_data['Tile_SN'].dropna().unique():
+            
+            # Get unique temperatures for this tile
+            tile_data = self.test_data[self.test_data['Tile_SN'] == tile]
+            unique_temps = sorted(tile_data['Set Temp(C)'].unique())
+            
+            # If we have exactly 3 temperatures, assign labels
+            if len(unique_temps) == 3:
+                temp_low, temp_mid, temp_high = unique_temps
+                
+                # Assign temperature labels
+                mask_low = (self.test_data['Tile_SN'] == tile) & (self.test_data['Set Temp(C)'] == temp_low)
+                mask_mid = (self.test_data['Tile_SN'] == tile) & (self.test_data['Set Temp(C)'] == temp_mid)
+                mask_high = (self.test_data['Tile_SN'] == tile) & (self.test_data['Set Temp(C)'] == temp_high)
+                
+                self.test_data.loc[mask_low, 'Temp_Label'] = 'Top_single_ch-4'
+                self.test_data.loc[mask_mid, 'Temp_Label'] = 'T_op_single_ch'
+                self.test_data.loc[mask_high, 'Temp_Label'] = 'Top_single_ch+4'
+            else:
+                # For tiles with different number of temperatures, assign based on relative position
+                for i, temp in enumerate(unique_temps):
+                    mask = (self.test_data['Tile_SN'] == tile) & (self.test_data['Set Temp(C)'] == temp)
+                    if i == 0:
+                        self.test_data.loc[mask, 'Temp_Label'] = 'Top_single_ch-4'
+                    elif i == len(unique_temps) - 1:
+                        self.test_data.loc[mask, 'Temp_Label'] = 'Top_single_ch+4'
+                    else:
+                        self.test_data.loc[mask, 'Temp_Label'] = 'T_op_single_ch'
+    
+    def get_temperature_labels(self):
+        """Get the ordered list of temperature labels."""
+        return ['Top_single_ch-4', 'T_op_single_ch', 'Top_single_ch+4']
+
     def plot_wavelength_vs_tile_by_temperature(self):
         if self.test_data is None or self.top_data is None:
             print("Test or Top data not loaded!")
             return
-        temps = [36, 43, 50]
-        temp_labels = ['36C', '43C', '50C']
+        temp_labels = self.get_temperature_labels()
         tile_sn_series = pd.Series(self.test_data['Tile_SN'])
         unique_tiles = tile_sn_series.dropna().unique()
         tile_dates = {}
@@ -188,13 +254,13 @@ class TP1P1CombinedAnalyzer:
         fig, axs = plt.subplots(3, 2, figsize=(24, 18), sharey=True)
         colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f',
                   '#bcbd22', '#17becf', '#aec7e8', '#ffbb78', '#98df8a', '#ff9896', '#c5b0d5', '#c49c94']
-        for temp_idx, (temp, temp_label) in enumerate(zip(temps, temp_labels)):
+        for temp_idx, temp_label in enumerate(temp_labels):
             for bank in [0, 1]:
                 scatter_data = []
                 for tile in sorted_tiles:
                     mask = (
                         (self.test_data['Tile_SN'] == tile) &
-                        (self.test_data['Set Temp(C)'] == temp) &
+                        (self.test_data['Temp_Label'] == temp_label) &
                         (self.test_data['Bank'] == bank)
                     )
                     tile_bank_data = self.test_data[mask]
@@ -221,7 +287,7 @@ class TP1P1CombinedAnalyzer:
                 for i, tile in enumerate(sorted_tiles):
                     mask = (
                         (self.test_data['Tile_SN'] == tile) &
-                        (self.test_data['Set Temp(C)'] == temp) &
+                        (self.test_data['Temp_Label'] == temp_label) &
                         (self.test_data['Bank'] == bank)
                     )
                     tile_bank_data = self.test_data[mask]
@@ -241,7 +307,7 @@ class TP1P1CombinedAnalyzer:
                             color='red',
                             rotation=90
                         )
-                axs[temp_idx, bank].set_title(f'{temp}°C - Bank {bank}', fontsize=14)
+                axs[temp_idx, bank].set_title(f'{temp_label} - Bank {bank}', fontsize=14)
                 axs[temp_idx, bank].set_xlabel('Tile SN (ordered by date)', fontsize=12)
                 axs[temp_idx, bank].set_xticks(range(len(sorted_tiles)))
                 axs[temp_idx, bank].set_xticklabels(sorted_tiles, rotation=45, fontsize=8)
@@ -253,9 +319,9 @@ class TP1P1CombinedAnalyzer:
                 axs[temp_idx, bank].legend(handles=handles, loc=4, fontsize=8)
         fig.suptitle('Wavelength Distribution vs Tile SN by Temperature (with T_op Annotations) at 150mA', fontsize=16)
         plt.tight_layout()
-        plt.savefig(self.output_dir / f"tp1p1_wavelength_vs_tile_combined.png", dpi=600, bbox_inches='tight')
+        plt.savefig(self.output_dir / f"tp1p3_wavelength_vs_tile_combined.png", dpi=600, bbox_inches='tight')
         plt.close()
-        print("✅ Wavelength vs Tile plot with T_op annotations saved as tp1p1_wavelength_vs_tile_combined.png")
+        print("✅ Wavelength vs Tile plot with T_op annotations saved as tp1p3_wavelength_vs_tile_combined.png")
 
     def plot_power_vs_tile_by_temperature(self):
         """Create one combined figure with power distribution for each temperature, with horizontal subplots."""
@@ -263,7 +329,7 @@ class TP1P1CombinedAnalyzer:
             print("Test data not loaded!")
             return
         
-        temps = [36, 43, 50]
+        temp_labels = self.get_temperature_labels()
         tile_sn_series = pd.Series(self.test_data['Tile_SN'])
         unique_tiles = tile_sn_series.dropna().unique()
         
@@ -281,17 +347,18 @@ class TP1P1CombinedAnalyzer:
         fig, axs = plt.subplots(3, 2, figsize=(24, 18), sharey=True)
         colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f']
         
-        for temp_idx, temp in enumerate(temps):
+        for temp_idx, temp_label in enumerate(temp_labels):
             for bank in [0, 1]:
                 # Prepare data for box plot
                 box_data = []
                 scatter_data = []
-                avg_powers = []  # Store average powers for annotation
+                tile_positions = []  # Store which tiles have data
+                tile_avg_powers = []  # Store average powers for tiles with data
                 
-                for tile in sorted_tiles:
+                for i, tile in enumerate(sorted_tiles):
                     mask = (
                         (self.test_data['Tile_SN'] == tile) &
-                        (self.test_data['Set Temp(C)'] == temp) &
+                        (self.test_data['Temp_Label'] == temp_label) &
                         (self.test_data['Bank'] == bank)
                     )
                     tile_bank_data = self.test_data[mask]
@@ -299,28 +366,28 @@ class TP1P1CombinedAnalyzer:
                     if len(tile_bank_data) > 0:
                         box_data.append(tile_bank_data['Power(mW)'].tolist())
                         avg_power = tile_bank_data['Power(mW)'].mean()
-                        avg_powers.append(avg_power)
+                        tile_positions.append(i)  # Store the original position
+                        tile_avg_powers.append(avg_power)
                         
                         # Add scatter points color-coded by channel
                         for channel in range(8):
                             channel_data = tile_bank_data[tile_bank_data['Channel'] == channel]
                             if len(channel_data) > 0:
                                 scatter_data.append({
-                                    'x': len(box_data) - 1,  # Box plot position
+                                    'x': i,  # Use original tile position
                                     'y': channel_data['Power(mW)'].tolist(),
                                     'color': colors[channel],
                                     'channel': channel
                                 })
-                    else:
-                        avg_powers.append(np.nan)
                 
-                # Create box plot
-                bp = axs[temp_idx, bank].boxplot(box_data, positions=range(len(box_data)), patch_artist=True)
-                
-                # Color the boxes
-                for patch in bp['boxes']:
-                    patch.set_facecolor('lightblue')
-                    patch.set_alpha(0.7)
+                # Create box plot only if we have data
+                if box_data:
+                    bp = axs[temp_idx, bank].boxplot(box_data, positions=tile_positions, patch_artist=True)
+                    
+                    # Color the boxes
+                    for patch in bp['boxes']:
+                        patch.set_facecolor('lightblue')
+                        patch.set_alpha(0.7)
                 
                 # Add scatter points color-coded by channel
                 for scatter in scatter_data:
@@ -334,32 +401,31 @@ class TP1P1CombinedAnalyzer:
                     )
                 
                 # Add average power annotations on top of tile SNs
-                for i, avg_power in enumerate(avg_powers):
-                    if not np.isnan(avg_power):
-                        # Calculate total power for this tile/bank combination
-                        tile_bank_mask = (
-                            (self.test_data['Tile_SN'] == sorted_tiles[i]) &
-                            (self.test_data['Set Temp(C)'] == temp) &
-                            (self.test_data['Bank'] == bank)
-                        )
-                        tile_bank_data = self.test_data[tile_bank_mask]
-                        total_power = tile_bank_data['Power(mW)'].sum()
-                        
-                        # Create annotation text
-                        annotation_text = f'P_ave={avg_power:.1f} P_total={total_power:.1f}'
-                        
-                        axs[temp_idx, bank].text(
-                            i, 40,  # Position at 40 mW on y-axis
-                            annotation_text,
-                            ha='center',
-                            va='bottom',
-                            fontsize=6,
-                            fontweight='bold',
-                            color='red',
-                            rotation=90
-                        )
+                for i, (tile_pos, avg_power) in enumerate(zip(tile_positions, tile_avg_powers)):
+                    # Calculate total power for this tile/bank combination
+                    tile_bank_mask = (
+                        (self.test_data['Tile_SN'] == sorted_tiles[tile_pos]) &
+                        (self.test_data['Temp_Label'] == temp_label) &
+                        (self.test_data['Bank'] == bank)
+                    )
+                    tile_bank_data = self.test_data[tile_bank_mask]
+                    total_power = tile_bank_data['Power(mW)'].sum()
+                    
+                    # Create annotation text
+                    annotation_text = f'P_ave={avg_power:.1f} P_total={total_power:.1f}'
+                    
+                    axs[temp_idx, bank].text(
+                        tile_pos, 40,  # Position at 40 mW on y-axis
+                        annotation_text,
+                        ha='center',
+                        va='bottom',
+                        fontsize=6,
+                        fontweight='bold',
+                        color='red',
+                        rotation=90
+                    )
                 
-                axs[temp_idx, bank].set_title(f'{temp}°C - Bank {bank}', fontsize=14)
+                axs[temp_idx, bank].set_title(f'{temp_label} - Bank {bank}', fontsize=14)
                 axs[temp_idx, bank].set_xlabel('Tile SN (ordered by date)', fontsize=12)
                 axs[temp_idx, bank].set_xticks(range(len(sorted_tiles)))
                 axs[temp_idx, bank].set_xticklabels(sorted_tiles, rotation=45, fontsize=8)
@@ -374,9 +440,9 @@ class TP1P1CombinedAnalyzer:
         
         fig.suptitle('Power Distribution vs Tile SN by Temperature (at 150mA)', fontsize=16)
         plt.tight_layout()
-        plt.savefig(self.output_dir / f"tp1p1_power_vs_tile_combined.png", dpi=600, bbox_inches='tight')
+        plt.savefig(self.output_dir / f"tp1p3_power_vs_tile_combined.png", dpi=600, bbox_inches='tight')
         plt.close()
-        print("✅ Power vs Tile plot saved as tp1p1_power_vs_tile_combined.png")
+        print("✅ Power vs Tile plot saved as tp1p3_power_vs_tile_combined.png")
 
     def plot_pave_vs_temperature(self):
         """Create scatter plot of average power vs temperature for each tile."""
@@ -384,7 +450,7 @@ class TP1P1CombinedAnalyzer:
             print("Test data not loaded!")
             return
         
-        temps = [36, 43, 50]
+        temp_labels = self.get_temperature_labels()
         tile_sn_series = pd.Series(self.test_data['Tile_SN'])
         unique_tiles = tile_sn_series.dropna().unique()
         
@@ -403,14 +469,14 @@ class TP1P1CombinedAnalyzer:
         colors = ['#1f77b4', '#ff7f0e', '#2ca02c']  # Blue, Orange, Green for temperatures
         
         for bank in [0, 1]:
-            for temp_idx, temp in enumerate(temps):
+            for temp_idx, temp_label in enumerate(temp_labels):
                 x_positions = []
                 y_values = []
                 
                 for tile in sorted_tiles:
                     mask = (
                         (self.test_data['Tile_SN'] == tile) &
-                        (self.test_data['Set Temp(C)'] == temp) &
+                        (self.test_data['Temp_Label'] == temp_label) &
                         (self.test_data['Bank'] == bank)
                     )
                     tile_bank_data = self.test_data[mask]
@@ -424,7 +490,7 @@ class TP1P1CombinedAnalyzer:
                                 c=colors[temp_idx], 
                                 s=60, 
                                 alpha=0.7, 
-                                label=f'{temp}°C')
+                                label=temp_label)
             
             axs[bank].set_title(f'Average Power vs Tile SN - Bank {bank} (at 150mA)', fontsize=14)
             axs[bank].set_xlabel('Tile SN (ordered by date)', fontsize=12)
@@ -435,9 +501,9 @@ class TP1P1CombinedAnalyzer:
             axs[bank].legend(fontsize=10)
         
         plt.tight_layout()
-        plt.savefig(self.output_dir / f"tp1p1_pave_vs_temperature.png", dpi=600, bbox_inches='tight')
+        plt.savefig(self.output_dir / f"tp1p3_pave_vs_temperature.png", dpi=600, bbox_inches='tight')
         plt.close()
-        print("✅ Average Power vs Temperature plot saved as tp1p1_pave_vs_temperature.png")
+        print("✅ Average Power vs Temperature plot saved as tp1p3_pave_vs_temperature.png")
 
     def plot_ptotal_vs_temperature(self):
         """Create scatter plot of total power vs temperature for each tile."""
@@ -445,7 +511,7 @@ class TP1P1CombinedAnalyzer:
             print("Test data not loaded!")
             return
         
-        temps = [36, 43, 50]
+        temp_labels = self.get_temperature_labels()
         tile_sn_series = pd.Series(self.test_data['Tile_SN'])
         unique_tiles = tile_sn_series.dropna().unique()
         
@@ -464,14 +530,14 @@ class TP1P1CombinedAnalyzer:
         colors = ['#1f77b4', '#ff7f0e', '#2ca02c']  # Blue, Orange, Green for temperatures
         
         for bank in [0, 1]:
-            for temp_idx, temp in enumerate(temps):
+            for temp_idx, temp_label in enumerate(temp_labels):
                 x_positions = []
                 y_values = []
                 
                 for tile in sorted_tiles:
                     mask = (
                         (self.test_data['Tile_SN'] == tile) &
-                        (self.test_data['Set Temp(C)'] == temp) &
+                        (self.test_data['Temp_Label'] == temp_label) &
                         (self.test_data['Bank'] == bank)
                     )
                     tile_bank_data = self.test_data[mask]
@@ -485,7 +551,7 @@ class TP1P1CombinedAnalyzer:
                                 c=colors[temp_idx], 
                                 s=60, 
                                 alpha=0.7, 
-                                label=f'{temp}°C')
+                                label=temp_label)
             
             axs[bank].set_title(f'Total Power vs Tile SN - Bank {bank} (at 150mA)', fontsize=14)
             axs[bank].set_xlabel('Tile SN (ordered by date)', fontsize=12)
@@ -496,9 +562,9 @@ class TP1P1CombinedAnalyzer:
             axs[bank].legend(fontsize=10)
         
         plt.tight_layout()
-        plt.savefig(self.output_dir / f"tp1p1_ptotal_vs_temperature.png", dpi=600, bbox_inches='tight')
+        plt.savefig(self.output_dir / f"tp1p3_ptotal_vs_temperature.png", dpi=600, bbox_inches='tight')
         plt.close()
-        print("✅ Total Power vs Temperature plot saved as tp1p1_ptotal_vs_temperature.png")
+        print("✅ Total Power vs Temperature plot saved as tp1p3_ptotal_vs_temperature.png")
 
     def plot_wavelength_vs_temperature(self):
         """Create scatter plot of average wavelength vs temperature for each tile."""
@@ -506,8 +572,7 @@ class TP1P1CombinedAnalyzer:
             print("Test data not loaded!")
             return
         
-        temps = [36, 43, 50]
-        temp_labels = ['36C', '43C', '50C']
+        temp_labels = self.get_temperature_labels()
         tile_sn_series = pd.Series(self.test_data['Tile_SN'])
         unique_tiles = tile_sn_series.dropna().unique()
         
@@ -526,14 +591,14 @@ class TP1P1CombinedAnalyzer:
         colors = ['#1f77b4', '#ff7f0e', '#2ca02c']  # Blue, Orange, Green for temperatures
         
         for bank in [0, 1]:
-            for temp_idx, temp in enumerate(temps):
+            for temp_idx, temp_label in enumerate(temp_labels):
                 x_positions = []
                 y_values = []
                 
                 for tile in sorted_tiles:
                     mask = (
                         (self.test_data['Tile_SN'] == tile) &
-                        (self.test_data['Set Temp(C)'] == temp) &
+                        (self.test_data['Temp_Label'] == temp_label) &
                         (self.test_data['Bank'] == bank)
                     )
                     tile_bank_data = self.test_data[mask]
@@ -547,7 +612,7 @@ class TP1P1CombinedAnalyzer:
                                 c=colors[temp_idx], 
                                 s=60, 
                                 alpha=0.7, 
-                                label=f'{temp}°C')
+                                label=temp_label)
             
             # Add annotations for each tile
             for i, tile in enumerate(sorted_tiles):
@@ -560,46 +625,46 @@ class TP1P1CombinedAnalyzer:
                 if len(tile_bank_data) > 0:
                     avg_wavelength = tile_bank_data['PeakWave(nm)'].mean()
                     
-                    # Calculate wavelength change across temperatures (36°C to 50°C)
-                    wavelength_36 = None
-                    wavelength_50 = None
+                    # Calculate wavelength change across temperatures (low to high temp bin)
+                    wavelength_low = None
+                    wavelength_high = None
                     
-                    # Get wavelength at 36°C
-                    mask_36 = (
+                    # Get wavelength at low temperature bin (40°C)
+                    mask_low = (
                         (self.test_data['Tile_SN'] == tile) &
-                        (self.test_data['Set Temp(C)'] == 36) &
+                        (self.test_data['Temp_Label'] == 'Top_single_ch-4') &
                         (self.test_data['Bank'] == bank)
                     )
-                    tile_36_data = self.test_data[mask_36]
-                    if len(tile_36_data) > 0:
-                        wavelength_36 = tile_36_data['PeakWave(nm)'].mean()
+                    tile_low_data = self.test_data[mask_low]
+                    if len(tile_low_data) > 0:
+                        wavelength_low = tile_low_data['PeakWave(nm)'].mean()
                     
-                    # Get wavelength at 50°C
-                    mask_50 = (
+                    # Get wavelength at high temperature bin (50°C)
+                    mask_high = (
                         (self.test_data['Tile_SN'] == tile) &
-                        (self.test_data['Set Temp(C)'] == 50) &
+                        (self.test_data['Temp_Label'] == 'Top_single_ch+4') &
                         (self.test_data['Bank'] == bank)
                     )
-                    tile_50_data = self.test_data[mask_50]
-                    if len(tile_50_data) > 0:
-                        wavelength_50 = tile_50_data['PeakWave(nm)'].mean()
+                    tile_high_data = self.test_data[mask_high]
+                    if len(tile_high_data) > 0:
+                        wavelength_high = tile_high_data['PeakWave(nm)'].mean()
                     
                     # Calculate wavelength change
                     wavelength_change = None
-                    if wavelength_36 is not None and wavelength_50 is not None:
-                        wavelength_change = wavelength_50 - wavelength_36
+                    if wavelength_low is not None and wavelength_high is not None:
+                        wavelength_change = wavelength_high - wavelength_low
                     
-                    # Calculate wavelength change per degree C
+                    # Calculate wavelength change per degree C (approximate 10°C difference between bins)
                     wavelength_slope = None
-                    if wavelength_36 is not None and wavelength_50 is not None:
-                        wavelength_slope = (wavelength_50 - wavelength_36) / (50 - 36)
+                    if wavelength_low is not None and wavelength_high is not None:
+                        wavelength_slope = (wavelength_high - wavelength_low) / 10
                     
                     # Get T_op annotations from Top data
-                    top_op = self.get_top_annotations(tile, '36C', 'T_op')  # Use any temp label
+                    top_op = self.get_top_annotations(tile, 'Top_single_ch-4', 'T_op') # Changed from 36C to ~40°C
                     if bank == 0:
-                        top_op_a = self.get_top_annotations(tile, '36C', 'T_op_A(1~8)')
+                        top_op_a = self.get_top_annotations(tile, 'Top_single_ch-4', 'T_op_A(1~8)')
                     else:
-                        top_op_b = self.get_top_annotations(tile, '36C', 'T_op_B(9~16)')
+                        top_op_b = self.get_top_annotations(tile, 'Top_single_ch-4', 'T_op_B(9~16)')
                     
                     # Create annotation text
                     annotation_text = f'λ_ave={avg_wavelength:.2f}'
@@ -645,9 +710,9 @@ class TP1P1CombinedAnalyzer:
             axs[bank].legend(fontsize=10)
         
         plt.tight_layout()
-        plt.savefig(self.output_dir / f"tp1p1_wavelength_vs_temperature.png", dpi=600, bbox_inches='tight')
+        plt.savefig(self.output_dir / f"tp1p3_wavelength_vs_temperature.png", dpi=600, bbox_inches='tight')
         plt.close()
-        print("✅ Average Wavelength vs Temperature plot saved as tp1p1_wavelength_vs_temperature.png")
+        print("✅ Average Wavelength vs Temperature plot saved as tp1p3_wavelength_vs_temperature.png")
 
     def create_dashboard(self):
         """Create separate Plotly figures for each plot and save as individual HTML files."""
@@ -741,7 +806,7 @@ class TP1P1CombinedAnalyzer:
             showlegend=True
         )
         
-        fig.write_html(self.output_dir / "tp1p1_power_vs_tile_plotly.html")
+        fig.write_html(self.output_dir / "tp1p3_power_vs_tile_plotly.html")
         print("✅ Power vs Tile Plotly figure saved")
 
     def create_wavelength_vs_tile_plotly(self):
@@ -808,7 +873,7 @@ class TP1P1CombinedAnalyzer:
         )
         
         fig.update_yaxes(range=[1295, 1325])
-        fig.write_html(self.output_dir / "tp1p1_wavelength_vs_tile_plotly.html")
+        fig.write_html(self.output_dir / "tp1p3_wavelength_vs_tile_plotly.html")
         print("✅ Wavelength vs Tile Plotly figure saved")
 
     def create_pave_vs_temp_plotly(self):
@@ -868,7 +933,7 @@ class TP1P1CombinedAnalyzer:
             width=1200
         )
         
-        fig.write_html(self.output_dir / "tp1p1_pave_vs_temp_plotly.html")
+        fig.write_html(self.output_dir / "tp1p3_pave_vs_temp_plotly.html")
         print("✅ Average Power vs Temperature Plotly figure saved")
 
     def create_ptotal_vs_temp_plotly(self):
@@ -928,7 +993,7 @@ class TP1P1CombinedAnalyzer:
             width=1200
         )
         
-        fig.write_html(self.output_dir / "tp1p1_ptotal_vs_temp_plotly.html")
+        fig.write_html(self.output_dir / "tp1p3_ptotal_vs_temp_plotly.html")
         print("✅ Total Power vs Temperature Plotly figure saved")
 
     def create_wavelength_vs_temp_plotly(self):
@@ -989,7 +1054,7 @@ class TP1P1CombinedAnalyzer:
         )
         
         fig.update_yaxes(range=[1295, 1325])
-        fig.write_html(self.output_dir / "tp1p1_wavelength_vs_temp_plotly.html")
+        fig.write_html(self.output_dir / "tp1p3_wavelength_vs_temp_plotly.html")
         print("✅ Wavelength vs Temperature Plotly figure saved")
 
     def plot_mpd_vs_tile_combined(self):
@@ -998,7 +1063,7 @@ class TP1P1CombinedAnalyzer:
             print("Test data not loaded!")
             return
         
-        temps = [36, 43, 50]
+        temp_labels = self.get_temperature_labels()
         tile_sn_series = pd.Series(self.test_data['Tile_SN'])
         unique_tiles = tile_sn_series.dropna().unique()
         
@@ -1016,17 +1081,18 @@ class TP1P1CombinedAnalyzer:
         fig, axs = plt.subplots(3, 2, figsize=(24, 18), sharey=True)
         colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f']
         
-        for temp_idx, temp in enumerate(temps):
+        for temp_idx, temp_label in enumerate(temp_labels):
             for bank in [0, 1]:
                 # Prepare data for box plot
                 box_data = []
                 scatter_data = []
-                avg_mpds = []  # Store average MPDs for annotation
+                tile_positions = []  # Store which tiles have data
+                tile_avg_mpds = []  # Store average MPDs for tiles with data
                 
-                for tile in sorted_tiles:
+                for i, tile in enumerate(sorted_tiles):
                     mask = (
                         (self.test_data['Tile_SN'] == tile) &
-                        (self.test_data['Set Temp(C)'] == temp) &
+                        (self.test_data['Temp_Label'] == temp_label) &
                         (self.test_data['Bank'] == bank)
                     )
                     tile_bank_data = self.test_data[mask]
@@ -1034,28 +1100,28 @@ class TP1P1CombinedAnalyzer:
                     if len(tile_bank_data) > 0:
                         box_data.append(tile_bank_data['MPD_PIC(uA)'].tolist())
                         avg_mpd = tile_bank_data['MPD_PIC(uA)'].mean()
-                        avg_mpds.append(avg_mpd)
+                        tile_positions.append(i)  # Store the original position
+                        tile_avg_mpds.append(avg_mpd)
                         
                         # Add scatter points color-coded by channel
                         for channel in range(8):
                             channel_data = tile_bank_data[tile_bank_data['Channel'] == channel]
                             if len(channel_data) > 0:
                                 scatter_data.append({
-                                    'x': len(box_data) - 1,  # Box plot position
+                                    'x': i,  # Use original tile position
                                     'y': channel_data['MPD_PIC(uA)'].tolist(),
                                     'color': colors[channel],
                                     'channel': channel
                                 })
-                    else:
-                        avg_mpds.append(np.nan)
                 
-                # Create box plot
-                bp = axs[temp_idx, bank].boxplot(box_data, positions=range(len(box_data)), patch_artist=True)
-                
-                # Color the boxes
-                for patch in bp['boxes']:
-                    patch.set_facecolor('lightblue')
-                    patch.set_alpha(0.7)
+                # Create box plot only if we have data
+                if box_data:
+                    bp = axs[temp_idx, bank].boxplot(box_data, positions=tile_positions, patch_artist=True)
+                    
+                    # Color the boxes
+                    for patch in bp['boxes']:
+                        patch.set_facecolor('lightblue')
+                        patch.set_alpha(0.7)
                 
                 # Add scatter points color-coded by channel
                 for scatter in scatter_data:
@@ -1069,23 +1135,22 @@ class TP1P1CombinedAnalyzer:
                     )
                 
                 # Add average MPD annotations on top of tile SNs
-                for i, avg_mpd in enumerate(avg_mpds):
-                    if not np.isnan(avg_mpd):
-                        # Create annotation text
-                        annotation_text = f'M_ave={avg_mpd:.0f}uA'
-                        
-                        axs[temp_idx, bank].text(
-                            i, 900,  # Position at 900 uA on y-axis
-                            annotation_text,
-                            ha='center',
-                            va='bottom',
-                            fontsize=6,
-                            fontweight='bold',
-                            color='red',
-                            rotation=90
-                        )
+                for i, (tile_pos, avg_mpd) in enumerate(zip(tile_positions, tile_avg_mpds)):
+                    # Create annotation text
+                    annotation_text = f'M_ave={avg_mpd:.0f}uA'
+                    
+                    axs[temp_idx, bank].text(
+                        tile_pos, 900,  # Position at 900 uA on y-axis
+                        annotation_text,
+                        ha='center',
+                        va='bottom',
+                        fontsize=6,
+                        fontweight='bold',
+                        color='red',
+                        rotation=90
+                    )
                 
-                axs[temp_idx, bank].set_title(f'{temp}°C - Bank {bank}', fontsize=14)
+                axs[temp_idx, bank].set_title(f'{temp_label} - Bank {bank}', fontsize=14)
                 axs[temp_idx, bank].set_xlabel('Tile SN (ordered by date)', fontsize=12)
                 axs[temp_idx, bank].set_xticks(range(len(sorted_tiles)))
                 axs[temp_idx, bank].set_xticklabels(sorted_tiles, rotation=45, fontsize=8)
@@ -1100,7 +1165,7 @@ class TP1P1CombinedAnalyzer:
         
         fig.suptitle('MPD_PIC Distribution vs Tile SN by Temperature (at 150mA)', fontsize=16)
         plt.tight_layout()
-        plot_filename = "tp1p1_mpd_vs_tile_combined.png"
+        plot_filename = "tp1p3_mpd_vs_tile_combined.png"
         plt.savefig(self.output_dir / plot_filename, dpi=600, bbox_inches='tight')
         plt.close()
         print(f"✅ MPD vs Tile Combined plot saved: {plot_filename}")
@@ -1182,14 +1247,288 @@ class TP1P1CombinedAnalyzer:
         fig.update_yaxes(title_text="MPD_PIC (uA)", row=1, col=2, range=[400, 1000])
         
         # Save HTML file
-        html_filename = "tp1p1_mpd_vs_tile_combined.html"
+        html_filename = "tp1p3_mpd_vs_tile_combined.html"
         fig.write_html(self.output_dir / html_filename)
         print(f"✅ Interactive HTML MPD vs tile plot saved: {html_filename}")
         
         return fig
 
+    def load_tp1p1_data_for_comparison(self):
+        """Load TP1-1 data for T_op comparison."""
+        script_dir = Path(__file__).parent
+        tp1p1_data_path = script_dir / "../TP1-1"
+        
+        # Load TP1-1 Top files
+        tp1p1_top_files = sorted(glob.glob(str(tp1p1_data_path / "* Top.csv")))
+        print(f"Found {len(tp1p1_top_files)} TP1-1 Top CSV files")
+        
+        dfs = []
+        encodings = ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']
+        for file_path in tp1p1_top_files:
+            df = None
+            for encoding in encodings:
+                try:
+                    df = pd.read_csv(file_path, encoding=encoding, header=None)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            if df is None:
+                print(f"Could not read {file_path} with any encoding")
+                continue
+            filename = Path(file_path).name
+            ld_header = df.iloc[0, 1:].tolist()
+            long_rows = []
+            for i in range(1, len(df)):
+                label = str(df.iloc[i, 0]).strip()
+                if not label or label == 'nan':
+                    continue
+                for ld_idx, ld in enumerate(ld_header):
+                    value = df.iloc[i, ld_idx + 1]
+                    if pd.isna(value):
+                        continue
+                    try:
+                        numeric_value = float(str(value).replace(',', ''))
+                        long_rows.append({
+                            'filename': filename,
+                            'label': label,
+                            'LD': str(ld),
+                            'value': numeric_value
+                        })
+                    except (ValueError, TypeError):
+                        continue
+            if long_rows:
+                dfs.append(pd.DataFrame(long_rows))
+        
+        if dfs:
+            tp1p1_top_data = pd.concat(dfs, ignore_index=True)
+            print(f"Combined TP1-1 top data shape: {tp1p1_top_data.shape}")
+            return tp1p1_top_data
+        else:
+            print("No TP1-1 top data loaded successfully")
+            return None
+
+    def extract_tp1p1_serial_number(self, filename):
+        """Extract serial number from TP1-1 filename."""
+        match = re.search(r'-Y(\d+)-TP1-1 Top\.csv$', filename)
+        if match:
+            return f"Y{match.group(1)}"
+        return None
+
+    def get_tp1p1_top_value(self, tp1p1_top_data, tile_sn, annotation_type='T_op'):
+        """Get T_op value from TP1-1 data for a specific tile."""
+        if tp1p1_top_data is None:
+            return None
+        # Find the filename for this tile
+        match = tp1p1_top_data[tp1p1_top_data['filename'].str.contains(tile_sn)]
+        if match.empty:
+            return None
+        # Get the filename
+        filename = match['filename'].iloc[0]
+        # For this file, get the requested annotation type
+        top_data = tp1p1_top_data[(tp1p1_top_data['filename'] == filename) & (tp1p1_top_data['label'] == annotation_type)]
+        # Get the T_op value
+        top_val = top_data['value'].iloc[0] if not top_data.empty else None
+        return top_val
+
+    def plot_tp1p3_top_comparison_vs_tile(self):
+        """Create comparison plot of T_op values from TP1-1 and TP1-3 data."""
+        if self.test_data is None or self.top_data is None:
+            print("TP1-3 Test or Top data not loaded!")
+            return
+        
+        # Load TP1-1 data for comparison
+        tp1p1_top_data = self.load_tp1p1_data_for_comparison()
+        if tp1p1_top_data is None:
+            print("Could not load TP1-1 data for comparison")
+            return
+        
+        # Get unique tiles from TP1-3 data
+        tile_sn_series = pd.Series(self.test_data['Tile_SN'])
+        unique_tiles = tile_sn_series.dropna().unique()
+        
+        # Order tiles by their earliest measurement date
+        tile_dates = {}
+        for tile in unique_tiles:
+            tile_data = self.test_data[self.test_data['Tile_SN'] == tile]
+            earliest_date = tile_data['Time'].min()
+            tile_dates[tile] = earliest_date
+        
+        # Sort tiles by date
+        sorted_tiles = sorted(unique_tiles, key=lambda x: tile_dates[x])
+        
+        # Extract T_op values for comparison
+        tp1p1_top_values = []
+        tp1p3_top_values = []
+        tile_labels = []
+        
+        for tile in sorted_tiles:
+            # Get TP1-1 T_op value
+            tp1p1_top = self.get_tp1p1_top_value(tp1p1_top_data, tile, 'T_op')
+            
+            # Get TP1-3 T_op value
+            tp1p3_top = self.get_top_annotations(tile, 'T_op_single_ch', 'T_op')
+            
+            # Only include tiles that have data in both test points
+            if tp1p1_top is not None and tp1p3_top is not None:
+                tp1p1_top_values.append(tp1p1_top)
+                tp1p3_top_values.append(tp1p3_top)
+                tile_labels.append(tile)
+        
+        if not tile_labels:
+            print("No tiles found with T_op data in both TP1-1 and TP1-3")
+            return
+        
+        # Create the comparison plot
+        fig, ax = plt.subplots(1, 1, figsize=(20, 10))
+        
+        x_positions = range(len(tile_labels))
+        
+        # Plot TP1-1 T_op values
+        ax.scatter(x_positions, tp1p1_top_values, 
+                  c='#1f77b4', 
+                  s=80, 
+                  alpha=0.7, 
+                  label='TP1-1 T_op',
+                  marker='o')
+        
+        # Plot TP1-3 T_op values
+        ax.scatter(x_positions, tp1p3_top_values, 
+                  c='#ff7f0e', 
+                  s=80, 
+                  alpha=0.7, 
+                  label='TP1-3 T_op',
+                  marker='s')
+        
+        # Connect corresponding points with lines
+        for i in range(len(tile_labels)):
+            ax.plot([i, i], [tp1p1_top_values[i], tp1p3_top_values[i]], 
+                   'k--', alpha=0.3, linewidth=1)
+        
+        # Add annotations for differences
+        for i, tile in enumerate(tile_labels):
+            diff = tp1p3_top_values[i] - tp1p1_top_values[i]
+            ax.text(i, 35,  # Changed from max(tp1p1_top_values[i], tp1p3_top_values[i]) + 1
+                   f'Δ={diff:.1f}°C',
+                   ha='center',
+                   va='bottom',
+                   fontsize=8,
+                   color='red',
+                   rotation=90)
+        
+        ax.set_title('T_op Comparison: TP1-1 vs TP1-3', fontsize=16)
+        ax.set_xlabel('Tile SN (ordered by date)', fontsize=12)
+        ax.set_ylabel('T_op (°C)', fontsize=12)
+        ax.set_xticks(x_positions)
+        ax.set_xticklabels(tile_labels, rotation=45, fontsize=10)
+        ax.set_ylim(30, 60)  # Set y-axis range from 30 to 60°C
+        ax.grid(True, linestyle='--', alpha=0.3)
+        ax.legend(fontsize=12)
+        
+        # Add statistics
+        mean_tp1p1 = np.mean(tp1p1_top_values)
+        mean_tp1p3 = np.mean(tp1p3_top_values)
+        std_tp1p1 = np.std(tp1p1_top_values)
+        std_tp1p3 = np.std(tp1p3_top_values)
+        mean_diff = np.mean([tp1p3_top_values[i] - tp1p1_top_values[i] for i in range(len(tile_labels))])
+        
+        stats_text = f'''Statistics:
+TP1-1 T_op: μ={mean_tp1p1:.1f}°C, σ={std_tp1p1:.1f}°C
+TP1-3 T_op: μ={mean_tp1p3:.1f}°C, σ={std_tp1p3:.1f}°C
+Mean Difference: {mean_diff:.1f}°C
+Tiles compared: {len(tile_labels)}'''
+        
+        ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, 
+               verticalalignment='top', bbox=dict(boxstyle="round", facecolor='wheat', alpha=0.8),
+               fontsize=10)
+        
+        plt.tight_layout()
+        plot_filename = "tp1p3_top_comparison_vs_tile.png"
+        plt.savefig(self.output_dir / plot_filename, dpi=600, bbox_inches='tight')
+        plt.close()
+        
+        print(f"✅ T_op comparison plot saved: {plot_filename}")
+        print(f"📊 Compared {len(tile_labels)} tiles")
+        print(f"📈 Mean T_op difference (TP1-3 - TP1-1): {mean_diff:.1f}°C")
+        
+        # Create HTML version
+        self.create_top_comparison_html(tile_labels, tp1p1_top_values, tp1p3_top_values)
+
+    def create_top_comparison_html(self, tile_labels, tp1p1_top_values, tp1p3_top_values):
+        """Create interactive HTML plot for T_op comparison."""
+        print("Creating interactive HTML T_op comparison plot...")
+        
+        fig = go.Figure()
+        
+        x_positions = list(range(len(tile_labels)))
+        
+        # Add TP1-1 T_op values
+        fig.add_trace(go.Scatter(
+            x=tile_labels,
+            y=tp1p1_top_values,
+            mode='markers',
+            name='TP1-1 T_op',
+            marker=dict(color='#1f77b4', size=10, opacity=0.7),
+            hovertemplate='<b>Tile:</b> %{x}<br>' +
+                         '<b>TP1-1 T_op:</b> %{y:.1f}°C<extra></extra>'
+        ))
+        
+        # Add TP1-3 T_op values
+        fig.add_trace(go.Scatter(
+            x=tile_labels,
+            y=tp1p3_top_values,
+            mode='markers',
+            name='TP1-3 T_op',
+            marker=dict(color='#ff7f0e', size=10, opacity=0.7, symbol='square'),
+            hovertemplate='<b>Tile:</b> %{x}<br>' +
+                         '<b>TP1-3 T_op:</b> %{y:.1f}°C<extra></extra>'
+        ))
+        
+        # Add connecting lines
+        for i in range(len(tile_labels)):
+            fig.add_trace(go.Scatter(
+                x=[tile_labels[i], tile_labels[i]],
+                y=[tp1p1_top_values[i], tp1p3_top_values[i]],
+                mode='lines',
+                line=dict(color='black', width=1, dash='dash'),
+                opacity=0.3,
+                showlegend=False,
+                hoverinfo='skip'
+            ))
+        
+        # Calculate statistics
+        mean_tp1p1 = np.mean(tp1p1_top_values)
+        mean_tp1p3 = np.mean(tp1p3_top_values)
+        std_tp1p1 = np.std(tp1p1_top_values)
+        std_tp1p3 = np.std(tp1p3_top_values)
+        mean_diff = np.mean([tp1p3_top_values[i] - tp1p1_top_values[i] for i in range(len(tile_labels))])
+        
+        # Update layout
+        fig.update_layout(
+            title=dict(
+                text=f'T_op Comparison: TP1-1 vs TP1-3<br><sub>Mean difference: {mean_diff:.1f}°C | Tiles: {len(tile_labels)}</sub>',
+                x=0.5,
+                font=dict(size=20, color='black')
+            ),
+            xaxis_title="Tile Serial Number",
+            yaxis_title="T_op (°C)",
+            width=1600,
+            height=800,
+            hovermode='closest',
+            showlegend=True
+        )
+        
+        # Set y-axis range from 30 to 60°C
+        fig.update_yaxes(range=[30, 60])
+        
+        # Save HTML file
+        html_filename = "tp1p3_top_comparison_vs_tile.html"
+        fig.write_html(self.output_dir / html_filename)
+        print(f"✅ Interactive HTML T_op comparison plot saved: {html_filename}")
+        
+        return fig
+
     def export_to_xarray(self):
-        """Export all combined data (test and top) as an xarray DataArray and save as a .nc file with TP1-1 attributes."""
+        """Export all combined data (test and top) as an xarray DataArray and save as a .nc file with TP1-3 attributes."""
         import xarray as xr
         from datetime import datetime
         
@@ -1218,7 +1557,7 @@ class TP1P1CombinedAnalyzer:
         data_xr = xr.Dataset.from_dataframe(combined_df)
         
         # Add attributes (only serializable types)
-        data_xr.attrs["test_point"] = "TP1-1"
+        data_xr.attrs["test_point"] = "TP1-3"
         data_xr.attrs["laser_current_mA"] = 150
         data_xr.attrs["analysis_date"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         data_xr.attrs["tile_count"] = len(self.tile_metadata)
@@ -1242,79 +1581,86 @@ class TP1P1CombinedAnalyzer:
             data_xr.attrs["tile_metadata_sample"] = json.dumps({})
         
         # Save as NetCDF
-        nc_path = self.data_dir / "tp1p1_combined_data.nc"
+        nc_path = self.data_dir / "tp1p3_combined_data.nc"
         data_xr.to_netcdf(nc_path, engine='netcdf4')
         print(f"✅ Exported combined data to NetCDF: {nc_path}")
 
     def run_all(self):
-        print("🔄 Loading TP-1 Test data files...")
+        print("🔄 Loading TP-3 Test data files...")
         self.load_test_files()
-        print("🔄 Loading TP-1 Top data files...")
+        print("🔄 Loading TP-3 Top data files...")
         self.load_top_files()
-        print("🔄 Combining TP-1 Test data...")
+        print("🔄 Combining TP-3 Test data...")
         self.load_test_data()
-        print("🔄 Combining TP-1 Top data...")
+        print("🔄 Combining TP-3 Top data...")
         self.load_top_data()
         
         print("\n" + "="*60)
-        print("TP1-1 POWER VS TILE BY TEMPERATURE")
+        print("TP1-3 POWER VS TILE BY TEMPERATURE")
         print("="*60)
         self.plot_power_vs_tile_by_temperature()
         
         print("\n" + "="*60)
-        print("TP1-1 WAVELENGTH VS TILE BY TEMPERATURE (WITH T_op ANNOTATIONS)")
+        print("TP1-3 WAVELENGTH VS TILE BY TEMPERATURE (WITH T_op ANNOTATIONS)")
         print("="*60)
         self.plot_wavelength_vs_tile_by_temperature()
         
         print("\n" + "="*60)
-        print("TP1-1 MPD VS TILE COMBINED")
+        print("TP1-3 MPD VS TILE COMBINED")
         print("="*60)
         self.plot_mpd_vs_tile_combined()
         
         print("\n" + "="*60)
-        print("TP1-1 AVERAGE POWER VS TEMPERATURE")
+        print("TP1-3 AVERAGE POWER VS TEMPERATURE")
         print("="*60)
         self.plot_pave_vs_temperature()
         
         print("\n" + "="*60)
-        print("TP1-1 TOTAL POWER VS TEMPERATURE")
+        print("TP1-3 TOTAL POWER VS TEMPERATURE")
         print("="*60)
         self.plot_ptotal_vs_temperature()
         
         print("\n" + "="*60)
-        print("TP1-1 AVERAGE WAVELENGTH VS TEMPERATURE")
+        print("TP1-3 AVERAGE WAVELENGTH VS TEMPERATURE")
         print("="*60)
         self.plot_wavelength_vs_temperature()
         
         print("\n" + "="*60)
-        print("TP1-1 DASHBOARD")
+        print("TP1-3 T_OP COMPARISON VS TILE (TP1-1 vs TP1-3)")
+        print("="*60)
+        self.plot_tp1p3_top_comparison_vs_tile()
+        
+        print("\n" + "="*60)
+        print("TP1-3 DASHBOARD")
         print("="*60)
         self.create_dashboard()
         
         # Export to xarray/netcdf
         print("\n" + "="*60)
-        print("TP1-1 EXPORT TO NETCDF")
+        print("TP1-3 EXPORT TO NETCDF")
         print("="*60)
         self.export_to_xarray()
         
         print("\n" + "="*80)
-        print("TP1-1 ANALYSIS COMPLETE!")
+        print("TP1-3 ANALYSIS COMPLETE!")
         print("="*80)
         print(f"✅ PNG plots saved to: {self.output_dir.absolute()}")
         print("📋 Generated plots:")
-        print(f"   • tp1p1_power_vs_tile_combined.png")
-        print(f"   • tp1p1_wavelength_vs_tile_combined.png")
-        print(f"   • tp1p1_pave_vs_temperature.png")
-        print(f"   • tp1p1_ptotal_vs_temperature.png")
-        print(f"   • tp1p1_wavelength_vs_temperature.png")
-        print(f"   • tp1p1_power_vs_tile_plotly.html")
-        print(f"   • tp1p1_wavelength_vs_tile_plotly.html")
-        print(f"   • tp1p1_pave_vs_temp_plotly.html")
-        print(f"   • tp1p1_ptotal_vs_temp_plotly.html")
-        print(f"   • tp1p1_wavelength_vs_temp_plotly.html")
-        print(f"   • tp1p1_mpd_vs_tile_combined.png")
-        print(f"   • tp1p1_mpd_vs_tile_combined.html")
-        print(f"   • tp1p1_combined_data.nc (in data folder)")
+        print(f"   • tp1p3_power_vs_tile_combined.png")
+        print(f"   • tp1p3_wavelength_vs_tile_combined.png")
+        print(f"   • tp1p3_pave_vs_temperature.png")
+        print(f"   • tp1p3_ptotal_vs_temperature.png")
+        print(f"   • tp1p3_wavelength_vs_temperature.png")
+        print(f"   • tp1p3_power_vs_tile_plotly.html")
+        print(f"   • tp1p3_wavelength_vs_tile_plotly.html")
+        print(f"   • tp1p3_pave_vs_temp_plotly.html")
+        print(f"   • tp1p3_ptotal_vs_temp_plotly.html")
+        print(f"   • tp1p3_wavelength_vs_temp_plotly.html")
+        print(f"   • tp1p3_mpd_vs_tile_combined.png")
+        print(f"   • tp1p3_mpd_vs_tile_combined.html")
+        print(f"   • tp1p3_top_comparison_vs_tile.png")
+        print(f"   • tp1p3_top_comparison_vs_tile.html")
+        print(f"   • tp1p3_combined_data.nc (in data folder)")
         print("\n📊 Metadata Summary:")
         print(f"   • Analyzed {len(self.tile_metadata)} tiles")
         print(f"   • All measurements performed at 150mA laser current")
@@ -1331,12 +1677,12 @@ class TP1P1CombinedAnalyzer:
 
 def main():
     print("=" * 80)
-    print("TP-1 LASER MODULE DATA ANALYSIS (COMBINED TEST + TOP)")
+    print("TP-3 LASER MODULE DATA ANALYSIS (COMBINED TEST + TOP)")
     print("=" * 80)
-    print("Test Point: TP1-1")
+    print("Test Point: TP1-3")
     print("Analysis Date:", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     print("=" * 80)
-    analyzer = TP1P1CombinedAnalyzer()
+    analyzer = TP1P3CombinedAnalyzer()
     analyzer.run_all()
 
 if __name__ == "__main__":

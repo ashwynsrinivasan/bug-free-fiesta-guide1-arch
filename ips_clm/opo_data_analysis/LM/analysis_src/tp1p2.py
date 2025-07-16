@@ -1534,6 +1534,16 @@ class TP1P2CombinedAnalyzer:
         self.plot_mpd_per_tile()
         
         print("\n" + "="*60)
+        print("TP1-2 MPD RESPONSIVITY PER TILE")
+        print("="*60)
+        self.plot_mpd_responsivity_per_tile()
+        
+        print("\n" + "="*60)
+        print("TP1-2 MPD RESPONSIVITY VS TILE COMBINED")
+        print("="*60)
+        self.plot_mpd_responsivity_vs_tile_combined()
+        
+        print("\n" + "="*60)
         print("TP1-2 MPD VS TILE COMBINED")
         print("="*60)
         self.plot_mpd_vs_tile_combined()
@@ -1554,7 +1564,7 @@ class TP1P2CombinedAnalyzer:
         self.plot_slope_efficiency_vs_tile_combined()
         
         print("\n" + "="*60)
-        print("TP1-2 TUNING EFFICIENCY ANALYSIS")
+        print("TP1-2 TUNING EFFICIENCY")
         print("="*60)
         efficiency_df = self.calculate_tuning_efficiency()
         if efficiency_df is not None:
@@ -1579,6 +1589,12 @@ class TP1P2CombinedAnalyzer:
             print(f"   • LIV_{tile_sn}.png")
             print(f"   • Scan_{tile_sn}.png")
             print(f"   • MPD_{tile_sn}.png")
+            print(f"   • MPD_Responsivity_{tile_sn}.png (in TP1-2 folder)")
+            print(f"   • MPD_Responsivity_Summary_{tile_sn}.csv (in TP1-2 folder)")
+        print(f"   • MPD_Responsivity_Summary_All_Tiles.png (in TP1-2 folder)")
+        print(f"   • MPD_Responsivity_Summary_All_Tiles.csv (in TP1-2 folder)")
+        print(f"   • tp1p2_mpd_responsivity_vs_tile_combined.png (in plots folder)")
+        print(f"   • tp1p2_mpd_responsivity_vs_tile_combined.html (in plots folder)")
         print(f"   • tp1p2_tuning_efficiency.png (in plots folder)")
         print(f"   • tp1p2_tuning_efficiency.html (in plots folder)")
         print(f"   • tp1p2_mpd_vs_tile_combined.png (in plots folder)")
@@ -1608,6 +1624,442 @@ class TP1P2CombinedAnalyzer:
                 if key != 'filename':
                     print(f"   • {key}: {value}")
         print("="*80)
+
+    def plot_mpd_responsivity_per_tile(self):
+        """Create MPD responsivity plots for each tile showing MPD responsivity vs Set Laser for each temperature.
+        MPD responsivity is defined as MPD_PIC(uA) / Power(mW)."""
+        if self.scan_data is None:
+            print("Scan data not loaded!")
+            return
+        
+        unique_tiles = self.scan_data['Tile_SN'].dropna().unique()
+        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+        
+        for tile_sn in unique_tiles:
+            print(f"Creating MPD responsivity plot for tile {tile_sn}...")
+            
+            # Get tile data and filter out invalid values
+            tile_data = self.scan_data[self.scan_data['Tile_SN'] == tile_sn].copy()
+            # Filter out rows where Power is 0 or NaN to avoid division by zero
+            tile_data = tile_data[(tile_data['Power(mW)'] > 0) & (tile_data['MPD_PIC(uA)'].notna()) & (tile_data['Power(mW)'].notna())]
+            
+            if len(tile_data) == 0:
+                print(f"  ❌ No valid data for tile {tile_sn}")
+                continue
+                
+            # Calculate MPD responsivity
+            tile_data['MPD_Responsivity(uA/mW)'] = tile_data['MPD_PIC(uA)'] / tile_data['Power(mW)']
+            
+            # Get temperatures for this tile
+            available_temps = sorted(tile_data['Set Temp(C)'].dropna().unique().tolist())
+            print(f"  Available temperatures for {tile_sn}: {available_temps}")
+            
+            # Use up to 3 temperatures, prioritizing the middle range
+            if len(available_temps) >= 3:
+                temps = [available_temps[0], available_temps[len(available_temps)//2], available_temps[-1]]
+            else:
+                temps = available_temps
+            print(f"  Selected temperatures for plotting: {temps}")
+            
+            # Get all unique channels for this tile
+            unique_channels = sorted(tile_data['Channel'].unique())
+            print(f"  Available channels: {unique_channels}")
+            
+            # Create figure with 2 subplots (Bank 0 and Bank 1)
+            fig, axs = plt.subplots(1, 2, figsize=(16, 6))
+            
+            for bank in [0, 1]:
+                ax = axs[bank]
+                tile_bank_data = tile_data[tile_data['Bank'] == bank]
+                print(f"    Bank {bank}: {len(tile_bank_data)} rows")
+                plotted = False
+                
+                for temp_idx, temp in enumerate(temps):
+                    temp_data = tile_bank_data[tile_bank_data['Set Temp(C)'] == temp]
+                    print(f"      Temp {temp}: {len(temp_data)} rows")
+                    
+                    if len(temp_data) > 0:
+                        # Plot each channel separately
+                        for channel_idx, channel in enumerate(unique_channels):
+                            channel_data = temp_data[temp_data['Channel'] == channel]
+                            if len(channel_data) > 0:
+                                # Group by Set Laser current and calculate mean responsivity
+                                grouped_data = channel_data.groupby('Set Laser(mA)')['MPD_Responsivity(uA/mW)'].mean().reset_index()
+                                print(f"        Channel {channel}: {len(grouped_data)} points, Responsivity range: {grouped_data['MPD_Responsivity(uA/mW)'].min():.3f} to {grouped_data['MPD_Responsivity(uA/mW)'].max():.3f} uA/mW")
+                                
+                                # Use different colors for different channels, with different line styles for temperatures
+                                color_idx = channel_idx % len(colors)
+                                line_style = ['-', '--', '-.'][temp_idx % 3]
+                                
+                                ax.plot(grouped_data['Set Laser(mA)'], grouped_data['MPD_Responsivity(uA/mW)'], 
+                                       marker='o', linewidth=1.5, markersize=4, 
+                                       color=colors[color_idx], linestyle=line_style,
+                                       label=f'{temp:.1f}°C Ch{channel}')
+                                plotted = True
+                
+                if not plotted:
+                    print(f"    ❌ No data plotted for bank {bank}")
+                    ax.text(0.5, 0.5, 'No data', ha='center', va='center', transform=ax.transAxes)
+                else:
+                    # Calculate and display average responsivity for this bank
+                    bank_avg_responsivity = tile_bank_data['MPD_Responsivity(uA/mW)'].mean()
+                    ax.text(0.02, 0.98, f'Avg: {bank_avg_responsivity:.3f} uA/mW', 
+                           transform=ax.transAxes, verticalalignment='top',
+                           bbox=dict(boxstyle="round,pad=0.3", facecolor='yellow', alpha=0.7),
+                           fontsize=10, fontweight='bold')
+                
+                ax.set_title(f'Bank {bank}', fontsize=14)
+                ax.set_xlabel('Set Laser (mA)', fontsize=12)
+                ax.set_ylabel('MPD Responsivity (uA/mW)', fontsize=12)
+                ax.set_xlim(120, 170)
+                
+                # Set reasonable y-axis limits based on data
+                if plotted:
+                    y_min = tile_bank_data['MPD_Responsivity(uA/mW)'].min() * 0.9
+                    y_max = tile_bank_data['MPD_Responsivity(uA/mW)'].max() * 1.1
+                    ax.set_ylim(max(0, y_min), y_max)
+                
+                ax.grid(True, linestyle='--', alpha=0.3)
+                if plotted:
+                    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=8)
+            
+            plt.suptitle(f'MPD Responsivity - Tile {tile_sn}', fontsize=16, fontweight='bold')
+            plt.tight_layout()
+            
+            # Save plot with unique filename for each tile directly under TP1-2 folder
+            plot_filename = f"MPD_Responsivity_{tile_sn}.png"
+            plt.savefig(self.output_dir / plot_filename, dpi=300, bbox_inches='tight')
+            plt.close()
+            print(f"✅ MPD responsivity plot saved: {plot_filename}")
+            
+            # Also create a summary CSV file for this tile with responsivity data
+            summary_data = []
+            for bank in [0, 1]:
+                bank_data = tile_data[tile_data['Bank'] == bank]
+                for temp in temps:
+                    temp_data = bank_data[bank_data['Set Temp(C)'] == temp]
+                    for channel in unique_channels:
+                        channel_data = temp_data[temp_data['Channel'] == channel]
+                        if len(channel_data) > 0:
+                            avg_responsivity = channel_data['MPD_Responsivity(uA/mW)'].mean()
+                            avg_laser = channel_data['Set Laser(mA)'].mean()
+                            avg_power = channel_data['Power(mW)'].mean()
+                            avg_mpd = channel_data['MPD_PIC(uA)'].mean()
+                            
+                            summary_data.append({
+                                'Tile_SN': tile_sn,
+                                'Bank': bank,
+                                'Channel': channel,
+                                'Temp_C': temp,
+                                'Avg_Laser_mA': avg_laser,
+                                'Avg_Power_mW': avg_power,
+                                'Avg_MPD_uA': avg_mpd,
+                                'Avg_Responsivity_uA_per_mW': avg_responsivity,
+                                'Data_Points': len(channel_data)
+                            })
+            
+            if summary_data:
+                summary_df = pd.DataFrame(summary_data)
+                csv_filename = f"MPD_Responsivity_Summary_{tile_sn}.csv"
+                summary_df.to_csv(self.output_dir / csv_filename, index=False)
+                print(f"✅ MPD responsivity summary saved: {csv_filename}")
+        
+        print(f"\n📂 All MPD responsivity plots and summaries saved to: {self.output_dir}")
+        
+        # Create an overall summary of all tiles
+        self.create_mpd_responsivity_summary()
+
+    def create_mpd_responsivity_summary(self):
+        """Create a summary plot and data file showing MPD responsivity statistics for all tiles."""
+        if self.scan_data is None:
+            print("Scan data not loaded!")
+            return
+        
+        print("Creating MPD responsivity summary for all tiles...")
+        
+        # Calculate responsivity for all data
+        valid_data = self.scan_data[(self.scan_data['Power(mW)'] > 0) & 
+                                   (self.scan_data['MPD_PIC(uA)'].notna()) & 
+                                   (self.scan_data['Power(mW)'].notna())].copy()
+        
+        if len(valid_data) == 0:
+            print("❌ No valid data for responsivity calculation")
+            return
+        
+        valid_data['MPD_Responsivity(uA/mW)'] = valid_data['MPD_PIC(uA)'] / valid_data['Power(mW)']
+        
+        # Get unique tiles
+        unique_tiles = sorted(valid_data['Tile_SN'].dropna().unique())
+        
+        # Create summary statistics
+        summary_stats = []
+        for tile_sn in unique_tiles:
+            tile_data = valid_data[valid_data['Tile_SN'] == tile_sn]
+            for bank in [0, 1]:
+                bank_data = tile_data[tile_data['Bank'] == bank]
+                if len(bank_data) > 0:
+                    summary_stats.append({
+                        'Tile_SN': tile_sn,
+                        'Bank': bank,
+                        'Mean_Responsivity': bank_data['MPD_Responsivity(uA/mW)'].mean(),
+                        'Std_Responsivity': bank_data['MPD_Responsivity(uA/mW)'].std(),
+                        'Min_Responsivity': bank_data['MPD_Responsivity(uA/mW)'].min(),
+                        'Max_Responsivity': bank_data['MPD_Responsivity(uA/mW)'].max(),
+                        'Data_Points': len(bank_data)
+                    })
+        
+        if not summary_stats:
+            print("❌ No summary statistics generated")
+            return
+        
+        summary_df = pd.DataFrame(summary_stats)
+        
+        # Create summary plot
+        fig, axs = plt.subplots(1, 2, figsize=(20, 8))
+        
+        for bank in [0, 1]:
+            ax = axs[bank]
+            bank_stats = summary_df[summary_df['Bank'] == bank]
+            
+            if len(bank_stats) > 0:
+                x_positions = range(len(bank_stats))
+                means = bank_stats['Mean_Responsivity'].values
+                stds = bank_stats['Std_Responsivity'].values
+                tiles = bank_stats['Tile_SN'].values
+                
+                # Plot mean responsivity with error bars
+                ax.errorbar(x_positions, means, yerr=stds, 
+                           marker='o', capsize=5, capthick=2, markersize=6,
+                           linewidth=2, label='Mean ± Std')
+                
+                # Add individual points for min/max
+                ax.scatter(x_positions, bank_stats['Min_Responsivity'], 
+                          marker='v', color='red', alpha=0.7, s=30, label='Min')
+                ax.scatter(x_positions, bank_stats['Max_Responsivity'], 
+                          marker='^', color='green', alpha=0.7, s=30, label='Max')
+                
+                ax.set_title(f'MPD Responsivity Summary - Bank {bank}', fontsize=14, fontweight='bold')
+                ax.set_xlabel('Tile SN', fontsize=12)
+                ax.set_ylabel('MPD Responsivity (uA/mW)', fontsize=12)
+                ax.set_xticks(x_positions)
+                ax.set_xticklabels(tiles, rotation=45, ha='right')
+                ax.grid(True, linestyle='--', alpha=0.3)
+                ax.legend()
+                
+                # Add statistics text
+                overall_mean = bank_stats['Mean_Responsivity'].mean()
+                overall_std = bank_stats['Mean_Responsivity'].std()
+                stats_text = f'Overall: μ={overall_mean:.3f}, σ={overall_std:.3f} uA/mW'
+                ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, 
+                       verticalalignment='top', bbox=dict(boxstyle="round", facecolor='wheat', alpha=0.8),
+                       fontsize=10)
+        
+        plt.suptitle('MPD Responsivity Summary - All Tiles', fontsize=16, fontweight='bold')
+        plt.tight_layout()
+        
+        # Save summary plot directly under TP1-2 folder
+        summary_plot_filename = "MPD_Responsivity_Summary_All_Tiles.png"
+        plt.savefig(self.output_dir / summary_plot_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"✅ MPD responsivity summary plot saved: {summary_plot_filename}")
+        
+        # Save summary CSV directly under TP1-2 folder
+        summary_csv_filename = "MPD_Responsivity_Summary_All_Tiles.csv"
+        summary_df.to_csv(self.output_dir / summary_csv_filename, index=False)
+        print(f"✅ MPD responsivity summary CSV saved: {summary_csv_filename}")
+        
+        # Print summary statistics
+        print(f"\n📊 MPD Responsivity Summary:")
+        print(f"   • Total tiles analyzed: {len(unique_tiles)}")
+        print(f"   • Total data points: {len(valid_data)}")
+        for bank in [0, 1]:
+            bank_stats = summary_df[summary_df['Bank'] == bank]
+            if len(bank_stats) > 0:
+                overall_mean = bank_stats['Mean_Responsivity'].mean()
+                overall_std = bank_stats['Mean_Responsivity'].std()
+                print(f"   • Bank {bank}: μ={overall_mean:.3f} ± {overall_std:.3f} uA/mW")
+        
+        return summary_df
+
+    def plot_mpd_responsivity_vs_tile_combined(self):
+        """Create a combined MPD responsivity plot showing responsivity vs Tile SN with scatter plots and box plots for each bank.
+        MPD responsivity is converted to A/W units (from uA/mW)."""
+        if self.scan_data is None:
+            print("Scan data not loaded!")
+            return
+        
+        # Filter out invalid data
+        valid_data = self.scan_data[(self.scan_data['Power(mW)'] > 0) & 
+                                   (self.scan_data['MPD_PIC(uA)'].notna()) & 
+                                   (self.scan_data['Power(mW)'].notna())].copy()
+        
+        if len(valid_data) == 0:
+            print("❌ No valid data for responsivity calculation")
+            return
+        
+        # Calculate MPD responsivity in A/W (convert from uA/mW)
+        # uA/mW = 1e-6 A / 1e-3 W = 1e-3 A/W
+        valid_data['MPD_Responsivity(A/W)'] = (valid_data['MPD_PIC(uA)'] / valid_data['Power(mW)']) * 1e-3
+        
+        # Get data at 150mA laser current
+        data_150ma = valid_data[(valid_data['Set Laser(mA)'] >= 145) & (valid_data['Set Laser(mA)'] <= 155)]
+        
+        if len(data_150ma) == 0:
+            print("❌ No data at 150mA laser current")
+            return
+        
+        unique_tiles = sorted(data_150ma['Tile_SN'].dropna().unique())
+        n_tiles = len(unique_tiles)
+        channel_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f']
+        
+        fig, axs = plt.subplots(1, 2, figsize=(20, 8), sharey=True)
+        
+        for bank in [0, 1]:
+            ax = axs[bank]
+            bank_data = data_150ma[data_150ma['Bank'] == bank]
+            
+            # For each channel, plot all tiles
+            for ch in range(8):
+                ch_responsivity = []
+                ch_x = []
+                for i, tile_sn in enumerate(unique_tiles):
+                    tile_data = bank_data[(bank_data['Tile_SN'] == tile_sn) & (bank_data['Channel'] == ch)]
+                    if len(tile_data) > 0:
+                        ch_responsivity.append(tile_data['MPD_Responsivity(A/W)'].mean())
+                        ch_x.append(i)
+                
+                if ch_x:
+                    ax.scatter(ch_x, ch_responsivity, color=channel_colors[ch], s=60, alpha=0.7, 
+                             label=f'Ch{ch}', marker='o', edgecolor='black', linewidth=0.5)
+            
+            # Box plot for each tile (all channels)
+            box_data = []
+            for tile_sn in unique_tiles:
+                tile_data = bank_data[bank_data['Tile_SN'] == tile_sn]
+                if len(tile_data) > 0:
+                    box_data.append(tile_data['MPD_Responsivity(A/W)'].values)
+                else:
+                    box_data.append([])
+            
+            bp = ax.boxplot(box_data, positions=range(n_tiles), patch_artist=True, showfliers=False, widths=0.5)
+            for patch in bp['boxes']:
+                patch.set_facecolor('lightblue')
+                patch.set_alpha(0.3)
+                patch.set_linewidth(0.5)
+            
+            # Annotate average responsivity for each tile
+            for i, tile_sn in enumerate(unique_tiles):
+                tile_data = bank_data[bank_data['Tile_SN'] == tile_sn]
+                if len(tile_data) > 0:
+                    avg_responsivity = tile_data['MPD_Responsivity(A/W)'].mean()
+                    ax.text(i, 0.045, f'avg={avg_responsivity:.4f}', ha='center', va='bottom', 
+                           fontsize=7, color='red', rotation=90, fontweight='bold')
+            
+            ax.set_title(f'MPD Responsivity vs Tile SN - Bank {bank} (at 150mA)', fontsize=14)
+            ax.set_xlabel('Tile SN (ordered by date)', fontsize=12)
+            if bank == 0:
+                ax.set_ylabel('MPD Responsivity (A/W)', fontsize=12)
+            ax.set_xticks(range(n_tiles))
+            ax.set_xticklabels(unique_tiles, rotation=45, ha='right', fontsize=8)
+            ax.set_ylim(0, 0.05)  # Set y-axis range from 0 to 0.05 A/W
+            ax.grid(True, linestyle='--', alpha=0.3)
+            
+            # Annotate average responsivity for each tile at 0.035 A/W level
+            for i, tile_sn in enumerate(unique_tiles):
+                tile_data = bank_data[bank_data['Tile_SN'] == tile_sn]
+                if len(tile_data) > 0:
+                    avg_responsivity = tile_data['MPD_Responsivity(A/W)'].mean()
+                    ax.text(i, 0.035, f'avg={avg_responsivity:.4f}', ha='center', va='bottom', 
+                           fontsize=7, color='red', rotation=90, fontweight='bold')
+            
+            # Legend for each subplot
+            handles, labels = ax.get_legend_handles_labels()
+            by_label = dict(zip(labels, handles))
+            ax.legend(by_label.values(), by_label.keys(), loc='upper right', fontsize=10, title='Channel')
+        
+        plt.suptitle('MPD Responsivity vs Tile SN at 150mA Laser Current', fontsize=16, fontweight='bold')
+        plt.tight_layout(rect=(0, 0, 1, 0.97))
+        
+        # Save plot in main plots folder
+        plots_dir = Path(__file__).parent / "plots"
+        plots_dir.mkdir(exist_ok=True)
+        plot_filename = "tp1p2_mpd_responsivity_vs_tile_combined.png"
+        plt.savefig(plots_dir / plot_filename, dpi=600, bbox_inches='tight')
+        plt.close()
+        print(f"✅ MPD Responsivity vs Tile Combined plot saved: {plot_filename}")
+        
+        # Create HTML version
+        self.create_mpd_responsivity_vs_tile_html(data_150ma, unique_tiles)
+
+    def create_mpd_responsivity_vs_tile_html(self, data_150ma, unique_tiles):
+        """Create interactive HTML plot for MPD responsivity vs tile."""
+        print("Creating interactive HTML MPD responsivity vs tile plot...")
+        
+        # Create subplots for Bank 0 and Bank 1
+        fig = make_subplots(
+            rows=1, cols=2,
+            subplot_titles=('Bank 0 - MPD Responsivity vs Tile SN at 150mA', 'Bank 1 - MPD Responsivity vs Tile SN at 150mA'),
+            specs=[[{"secondary_y": False}, {"secondary_y": False}]]
+        )
+        
+        channel_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f']
+        
+        for bank in [0, 1]:
+            bank_data = data_150ma[data_150ma['Bank'] == bank]
+            
+            for ch in range(8):
+                ch_responsivity = []
+                ch_x = []
+                for i, tile_sn in enumerate(unique_tiles):
+                    tile_data = bank_data[(bank_data['Tile_SN'] == tile_sn) & (bank_data['Channel'] == ch)]
+                    if len(tile_data) > 0:
+                        ch_responsivity.append(tile_data['MPD_Responsivity(A/W)'].mean())
+                        ch_x.append(i)
+                
+                if ch_x:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=[unique_tiles[i] for i in ch_x],
+                            y=ch_responsivity,
+                            mode='markers',
+                            name=f'Bank {bank} - Channel {ch}',
+                            marker=dict(color=channel_colors[ch], size=8, opacity=0.7),
+                            hovertemplate='<b>Tile:</b> %{x}<br>' +
+                                        '<b>Responsivity:</b> %{y:.4f} A/W<br>' +
+                                        '<b>Bank:</b> ' + str(bank) + '<br>' +
+                                        '<b>Channel:</b> ' + str(ch) + '<br>' +
+                                        '<b>Laser Current:</b> 150 mA<extra></extra>',
+                            showlegend=False
+                        ),
+                        row=1, col=bank+1
+                    )
+        
+        fig.update_layout(
+            title=dict(
+                text='MPD Responsivity vs Tile SN at 150mA Laser Current',
+                x=0.5,
+                font=dict(size=20, color='black')
+            ),
+            width=1600,
+            height=600,
+            showlegend=False,
+            hovermode='closest'
+        )
+        
+        # Update axes
+        fig.update_xaxes(title_text="Tile Serial Number", row=1, col=1)
+        fig.update_xaxes(title_text="Tile Serial Number", row=1, col=2)
+        fig.update_yaxes(title_text="MPD Responsivity (A/W)", row=1, col=1, range=[0, 0.05])
+        fig.update_yaxes(title_text="MPD Responsivity (A/W)", row=1, col=2, range=[0, 0.05])
+        
+        # Save HTML file
+        html_filename = "tp1p2_mpd_responsivity_vs_tile_combined.html"
+        plots_dir = Path(__file__).parent / "plots"
+        plots_dir.mkdir(exist_ok=True)
+        fig.write_html(plots_dir / html_filename)
+        print(f"✅ Interactive HTML MPD responsivity vs tile plot saved: {html_filename}")
+        
+        return fig
 
 def main():
     print("=" * 80)
