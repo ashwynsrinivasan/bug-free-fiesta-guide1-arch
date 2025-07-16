@@ -812,16 +812,16 @@ class LensingStationDataExtractor:
                 expected_freq = get_channel_value(bank, channel, 'frequency', grid_data)
                 # Convert measured wavelength to frequency (c = 299792458 m/s)
                 measured_freq = 299792458 / (measured_wl * 1e-9) / 1e12  # Convert to THz
-                freq_error = measured_freq - expected_freq
+                freq_error = (measured_freq - expected_freq) * 1000  # Convert to GHz
                 
                 error_data.append({
                     'Tile_SN': row['Tile_SN'],
                     'Bank': bank,
                     'Channel': channel,
                     'Original_Channel': row['Original_Channel'],
-                    'Freq_Error_THz': freq_error,
-                    'Measured_Freq': measured_freq,
-                    'Expected_Freq': expected_freq
+                    'Freq_Error_GHz': freq_error,
+                    'Measured_Freq': measured_freq * 1000,  # Store in GHz
+                    'Expected_Freq': expected_freq * 1000   # Store in GHz
                 })
             except Exception as e:
                 print(f"⚠️ Error calculating frequency error for {row['Tile_SN']}, channel {channel}: {e}")
@@ -845,8 +845,8 @@ class LensingStationDataExtractor:
         bank1_data = error_df[error_df['Bank'] == 1]
         
         # Plot both banks
-        self._plot_error_data(ax1, bank0_data, "Bank 0 (Set A)", "Freq_Error_THz", "Frequency Error (THz)")
-        self._plot_error_data(ax2, bank1_data, "Bank 1 (Set B)", "Freq_Error_THz", "Frequency Error (THz)")
+        self._plot_error_data(ax1, bank0_data, "Bank 0 (Set A)", "Freq_Error_GHz", "Frequency Error (GHz)")
+        self._plot_error_data(ax2, bank1_data, "Bank 1 (Set B)", "Freq_Error_GHz", "Frequency Error (GHz)")
         
         plt.tight_layout()
         
@@ -972,16 +972,16 @@ class LensingStationDataExtractor:
                 expected_freq = get_channel_value(bank, grid_channel, 'frequency', grid_data)
                 # Convert measured wavelength to frequency (c = 299792458 m/s)
                 measured_freq = 299792458 / (measured_wl * 1e-9) / 1e12  # Convert to THz
-                freq_error = measured_freq - expected_freq
+                freq_error = (measured_freq - expected_freq) * 1000  # Convert to GHz
                 
                 error_data.append({
                     'Tile_SN': row['Tile_SN'],
                     'Bank': bank,
                     'Channel': channel_str,
                     'Grid_Channel': grid_channel,
-                    'Freq_Error_THz': freq_error,
-                    'Measured_Freq': measured_freq,
-                    'Expected_Freq': expected_freq
+                    'Freq_Error_GHz': freq_error,
+                    'Measured_Freq': measured_freq * 1000,  # Store in GHz
+                    'Expected_Freq': expected_freq * 1000   # Store in GHz
                 })
             except Exception as e:
                 print(f"⚠️ Error calculating frequency error for {row['Tile_SN']}, channel {channel_str}: {e}")
@@ -1005,8 +1005,8 @@ class LensingStationDataExtractor:
         bank1_data = error_df[error_df['Bank'] == 1]
         
         # Plot both banks
-        self._plot_error_data(ax1, bank0_data, "Bank 0 (Set A)", "Freq_Error_THz", "Frequency Error (THz)")
-        self._plot_error_data(ax2, bank1_data, "Bank 1 (Set B)", "Freq_Error_THz", "Frequency Error (THz)")
+        self._plot_error_data(ax1, bank0_data, "Bank 0 (Set A)", "Freq_Error_GHz", "Frequency Error (GHz)")
+        self._plot_error_data(ax2, bank1_data, "Bank 1 (Set B)", "Freq_Error_GHz", "Frequency Error (GHz)")
         
         plt.tight_layout()
         
@@ -1085,6 +1085,12 @@ class LensingStationDataExtractor:
         ax.set_xticks(range(len(unique_tiles)))
         ax.set_xticklabels(unique_tiles, rotation=45, ha='right')
         
+        # Set y-axis limits based on error type
+        if 'nm' in ylabel:
+            ax.set_ylim(-0.4, 0.4)  # Wavelength error: -0.4 to 0.4 nm
+        elif 'GHz' in ylabel:
+            ax.set_ylim(-100, 100)  # Frequency error: -100 to +100 GHz
+        
         # Add statistics text
         if not data.empty:
             mean_error = data[error_column].mean()
@@ -1095,7 +1101,7 @@ class LensingStationDataExtractor:
             if 'nm' in ylabel:
                 stats_text = f'Mean: {mean_error:.3f} nm\nStd: {std_error:.3f} nm\nMin: {min_error:.3f} nm\nMax: {max_error:.3f} nm'
             else:
-                stats_text = f'Mean: {mean_error:.3f} THz\nStd: {std_error:.3f} THz\nMin: {min_error:.3f} THz\nMax: {max_error:.3f} THz'
+                stats_text = f'Mean: {mean_error:.1f} GHz\nStd: {std_error:.1f} GHz\nMin: {min_error:.1f} GHz\nMax: {max_error:.1f} GHz'
             
             ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, 
                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
