@@ -18,6 +18,7 @@ import seaborn as sns
 from pathlib import Path
 from datetime import datetime
 import glob
+from wavelength_grid_utils import load_wavelength_grid, get_channel_value
 
 
 class LensingStationDataExtractor:
@@ -713,6 +714,392 @@ class LensingStationDataExtractor:
         print(f"✅ ALL channel Power plot saved: {plot_path}")
         plt.close()
     
+    def plot_single_channel_wl_error_vs_tile(self):
+        """
+        Create wavelength error vs tile plot for single channel ON data
+        """
+        if self.coupling_loss_data.empty:
+            print("❌ No single channel data available. Run extract_coupling_loss_data() first.")
+            return
+        
+        print("📊 Creating single channel wavelength error vs tile plot...")
+        
+        # Load wavelength grid for expected values
+        try:
+            grid_data = load_wavelength_grid()
+        except Exception as e:
+            print(f"❌ Could not load wavelength grid: {e}")
+            return
+        
+        # Calculate wavelength errors
+        error_data = []
+        for _, row in self.coupling_loss_data.iterrows():
+            bank = int(row['Bank'])
+            channel = int(row['Channel'])  # This is already 1-8 for both banks
+            measured_wl = float(row['WL_nm_Lens_coupling'])
+            
+            try:
+                expected_wl = get_channel_value(bank, channel, 'wavelength', grid_data)
+                wl_error = measured_wl - expected_wl
+                
+                error_data.append({
+                    'Tile_SN': row['Tile_SN'],
+                    'Bank': bank,
+                    'Channel': channel,
+                    'Original_Channel': row['Original_Channel'],
+                    'WL_Error_nm': wl_error,
+                    'Measured_WL': measured_wl,
+                    'Expected_WL': expected_wl
+                })
+            except Exception as e:
+                print(f"⚠️ Error calculating wavelength error for {row['Tile_SN']}, channel {channel}: {e}")
+                continue
+        
+        if not error_data:
+            print("❌ No wavelength error data calculated")
+            return
+        
+        error_df = pd.DataFrame(error_data)
+        
+        # Create figure with two subplots
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))
+        
+        # Add a common title for the entire figure
+        fig.suptitle('Single Channel ON - Wavelength Error vs Expected Grid Values', 
+                    fontsize=16, fontweight='bold', y=0.98)
+        
+        # Filter data for Bank 0 and Bank 1
+        bank0_data = error_df[error_df['Bank'] == 0]
+        bank1_data = error_df[error_df['Bank'] == 1]
+        
+        # Plot both banks
+        self._plot_error_data(ax1, bank0_data, "Bank 0 (Set A)", "WL_Error_nm", "Wavelength Error (nm)")
+        self._plot_error_data(ax2, bank1_data, "Bank 1 (Set B)", "WL_Error_nm", "Wavelength Error (nm)")
+        
+        plt.tight_layout()
+        
+        # Save the plot
+        plot_path = self.plots_dir / "tp2p0_single_channel_on_wl_error_vs_tile_combined.png"
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        print(f"✅ Single channel wavelength error plot saved: {plot_path}")
+        plt.close()
+    
+    def plot_single_channel_freq_error_vs_tile(self):
+        """
+        Create frequency error vs tile plot for single channel ON data
+        """
+        if self.coupling_loss_data.empty:
+            print("❌ No single channel data available. Run extract_coupling_loss_data() first.")
+            return
+        
+        print("📊 Creating single channel frequency error vs tile plot...")
+        
+        # Load wavelength grid for expected values
+        try:
+            grid_data = load_wavelength_grid()
+        except Exception as e:
+            print(f"❌ Could not load wavelength grid: {e}")
+            return
+        
+        # Calculate frequency errors
+        error_data = []
+        for _, row in self.coupling_loss_data.iterrows():
+            bank = int(row['Bank'])
+            channel = int(row['Channel'])  # This is already 1-8 for both banks
+            measured_wl = float(row['WL_nm_Lens_coupling'])
+            
+            try:
+                expected_freq = get_channel_value(bank, channel, 'frequency', grid_data)
+                # Convert measured wavelength to frequency (c = 299792458 m/s)
+                measured_freq = 299792458 / (measured_wl * 1e-9) / 1e12  # Convert to THz
+                freq_error = measured_freq - expected_freq
+                
+                error_data.append({
+                    'Tile_SN': row['Tile_SN'],
+                    'Bank': bank,
+                    'Channel': channel,
+                    'Original_Channel': row['Original_Channel'],
+                    'Freq_Error_THz': freq_error,
+                    'Measured_Freq': measured_freq,
+                    'Expected_Freq': expected_freq
+                })
+            except Exception as e:
+                print(f"⚠️ Error calculating frequency error for {row['Tile_SN']}, channel {channel}: {e}")
+                continue
+        
+        if not error_data:
+            print("❌ No frequency error data calculated")
+            return
+        
+        error_df = pd.DataFrame(error_data)
+        
+        # Create figure with two subplots
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))
+        
+        # Add a common title for the entire figure
+        fig.suptitle('Single Channel ON - Frequency Error vs Expected Grid Values', 
+                    fontsize=16, fontweight='bold', y=0.98)
+        
+        # Filter data for Bank 0 and Bank 1
+        bank0_data = error_df[error_df['Bank'] == 0]
+        bank1_data = error_df[error_df['Bank'] == 1]
+        
+        # Plot both banks
+        self._plot_error_data(ax1, bank0_data, "Bank 0 (Set A)", "Freq_Error_THz", "Frequency Error (THz)")
+        self._plot_error_data(ax2, bank1_data, "Bank 1 (Set B)", "Freq_Error_THz", "Frequency Error (THz)")
+        
+        plt.tight_layout()
+        
+        # Save the plot
+        plot_path = self.plots_dir / "tp2p0_single_channel_on_freq_error_vs_tile_combined.png"
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        print(f"✅ Single channel frequency error plot saved: {plot_path}")
+        plt.close()
+    
+    def plot_all_channel_wl_error_vs_tile(self):
+        """
+        Create wavelength error vs tile plot for ALL channel ON data
+        """
+        if not hasattr(self, 'all_channel_data') or self.all_channel_data.empty:
+            print("❌ No ALL channel ON data available. Run extract_all_channel_on_data() first.")
+            return
+        
+        print("📊 Creating ALL channel wavelength error vs tile plot...")
+        
+        # Load wavelength grid for expected values
+        try:
+            grid_data = load_wavelength_grid()
+        except Exception as e:
+            print(f"❌ Could not load wavelength grid: {e}")
+            return
+        
+        # Calculate wavelength errors
+        error_data = []
+        for _, row in self.all_channel_data.iterrows():
+            bank = int(row['Bank'])
+            channel_str = str(row['Channel'])  # e.g., "CH1", "CH9", etc.
+            measured_wl = float(row['WL_nm_All_Channel'])
+            
+            try:
+                # Extract channel number from string like "CH1", "CH9"
+                channel_num = int(channel_str[2:])
+                
+                # Convert to 1-8 range for grid lookup
+                if bank == 0:
+                    grid_channel = channel_num  # CH1-CH8 -> 1-8
+                else:
+                    grid_channel = channel_num - 8  # CH9-CH16 -> 1-8
+                
+                expected_wl = get_channel_value(bank, grid_channel, 'wavelength', grid_data)
+                wl_error = measured_wl - expected_wl
+                
+                error_data.append({
+                    'Tile_SN': row['Tile_SN'],
+                    'Bank': bank,
+                    'Channel': channel_str,
+                    'Grid_Channel': grid_channel,
+                    'WL_Error_nm': wl_error,
+                    'Measured_WL': measured_wl,
+                    'Expected_WL': expected_wl
+                })
+            except Exception as e:
+                print(f"⚠️ Error calculating wavelength error for {row['Tile_SN']}, channel {channel_str}: {e}")
+                continue
+        
+        if not error_data:
+            print("❌ No wavelength error data calculated")
+            return
+        
+        error_df = pd.DataFrame(error_data)
+        
+        # Create figure with two subplots
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))
+        
+        # Add a common title for the entire figure
+        fig.suptitle('ALL Channel ON - Wavelength Error vs Expected Grid Values', 
+                    fontsize=16, fontweight='bold', y=0.98)
+        
+        # Filter data for Bank 0 and Bank 1
+        bank0_data = error_df[error_df['Bank'] == 0]
+        bank1_data = error_df[error_df['Bank'] == 1]
+        
+        # Plot both banks
+        self._plot_error_data(ax1, bank0_data, "Bank 0 (Set A)", "WL_Error_nm", "Wavelength Error (nm)")
+        self._plot_error_data(ax2, bank1_data, "Bank 1 (Set B)", "WL_Error_nm", "Wavelength Error (nm)")
+        
+        plt.tight_layout()
+        
+        # Save the plot
+        plot_path = self.plots_dir / "tp2p0_all_channel_on_wl_error_vs_tile_combined.png"
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        print(f"✅ ALL channel wavelength error plot saved: {plot_path}")
+        plt.close()
+    
+    def plot_all_channel_freq_error_vs_tile(self):
+        """
+        Create frequency error vs tile plot for ALL channel ON data
+        """
+        if not hasattr(self, 'all_channel_data') or self.all_channel_data.empty:
+            print("❌ No ALL channel ON data available. Run extract_all_channel_on_data() first.")
+            return
+        
+        print("📊 Creating ALL channel frequency error vs tile plot...")
+        
+        # Load wavelength grid for expected values
+        try:
+            grid_data = load_wavelength_grid()
+        except Exception as e:
+            print(f"❌ Could not load wavelength grid: {e}")
+            return
+        
+        # Calculate frequency errors
+        error_data = []
+        for _, row in self.all_channel_data.iterrows():
+            bank = int(row['Bank'])
+            channel_str = str(row['Channel'])  # e.g., "CH1", "CH9", etc.
+            measured_wl = float(row['WL_nm_All_Channel'])
+            
+            try:
+                # Extract channel number from string like "CH1", "CH9"
+                channel_num = int(channel_str[2:])
+                
+                # Convert to 1-8 range for grid lookup
+                if bank == 0:
+                    grid_channel = channel_num  # CH1-CH8 -> 1-8
+                else:
+                    grid_channel = channel_num - 8  # CH9-CH16 -> 1-8
+                
+                expected_freq = get_channel_value(bank, grid_channel, 'frequency', grid_data)
+                # Convert measured wavelength to frequency (c = 299792458 m/s)
+                measured_freq = 299792458 / (measured_wl * 1e-9) / 1e12  # Convert to THz
+                freq_error = measured_freq - expected_freq
+                
+                error_data.append({
+                    'Tile_SN': row['Tile_SN'],
+                    'Bank': bank,
+                    'Channel': channel_str,
+                    'Grid_Channel': grid_channel,
+                    'Freq_Error_THz': freq_error,
+                    'Measured_Freq': measured_freq,
+                    'Expected_Freq': expected_freq
+                })
+            except Exception as e:
+                print(f"⚠️ Error calculating frequency error for {row['Tile_SN']}, channel {channel_str}: {e}")
+                continue
+        
+        if not error_data:
+            print("❌ No frequency error data calculated")
+            return
+        
+        error_df = pd.DataFrame(error_data)
+        
+        # Create figure with two subplots
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))
+        
+        # Add a common title for the entire figure
+        fig.suptitle('ALL Channel ON - Frequency Error vs Expected Grid Values', 
+                    fontsize=16, fontweight='bold', y=0.98)
+        
+        # Filter data for Bank 0 and Bank 1
+        bank0_data = error_df[error_df['Bank'] == 0]
+        bank1_data = error_df[error_df['Bank'] == 1]
+        
+        # Plot both banks
+        self._plot_error_data(ax1, bank0_data, "Bank 0 (Set A)", "Freq_Error_THz", "Frequency Error (THz)")
+        self._plot_error_data(ax2, bank1_data, "Bank 1 (Set B)", "Freq_Error_THz", "Frequency Error (THz)")
+        
+        plt.tight_layout()
+        
+        # Save the plot
+        plot_path = self.plots_dir / "tp2p0_all_channel_on_freq_error_vs_tile_combined.png"
+        plt.savefig(plot_path, dpi=300, bbox_inches='tight')
+        print(f"✅ ALL channel frequency error plot saved: {plot_path}")
+        plt.close()
+    
+    def _plot_error_data(self, ax, data, title, error_column, ylabel):
+        """
+        Plot error data for a specific bank
+        
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes
+            Axes to plot on
+        data : pd.DataFrame
+            Error data for the bank
+        title : str
+            Title for the plot
+        error_column : str
+            Column name containing error values
+        ylabel : str
+            Y-axis label
+        """
+        if data.empty:
+            ax.set_title(f"{title} - No Data")
+            return
+        
+        # Get unique tiles and channels
+        unique_tiles = sorted(data['Tile_SN'].unique())
+        unique_channels = sorted(data['Channel'].unique()) if 'Channel' in data.columns else sorted(data['Grid_Channel'].unique())
+        
+        # Create a mapping from tile name to numeric position
+        tile_to_position = {tile: i for i, tile in enumerate(unique_tiles)}
+        
+        # Colors for different channels
+        colors = plt.colormaps['Set3'](np.linspace(0, 1, len(unique_channels)))
+        
+        # Create scatter plot for each channel using numeric positions
+        for i, channel in enumerate(unique_channels):
+            if 'Channel' in data.columns:
+                channel_data = data[data['Channel'] == channel]
+                legend_label = channel
+                # Map bank1 legend labels from CH9-CH16 to CH1-CH8
+                if "Bank 1" in title and isinstance(channel, str) and channel.startswith('CH'):
+                    try:
+                        ch_num = int(channel[2:])
+                        if 9 <= ch_num <= 16:
+                            legend_label = f"CH{ch_num - 8}"
+                    except ValueError:
+                        pass
+            else:
+                channel_data = data[data['Grid_Channel'] == channel]
+                legend_label = f'CH{channel}'
+            
+            if not channel_data.empty:
+                # Convert tile names to numeric positions
+                x_positions = [tile_to_position[tile] for tile in channel_data['Tile_SN']]
+                ax.scatter(x_positions, channel_data[error_column], 
+                          alpha=0.7, s=60, color=colors[i], 
+                          label=legend_label, edgecolors='black', linewidth=0.5)
+        
+        # Add horizontal line at y=0 for reference
+        ax.axhline(y=0, color='red', linestyle='--', alpha=0.5, label='Expected Value')
+        
+        # Customize plot
+        ax.set_xlabel('Tile Serial Number', fontsize=12)
+        ax.set_ylabel(ylabel, fontsize=12)
+        ax.set_title(title, fontsize=14, fontweight='bold')
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        ax.grid(True, alpha=0.3)
+        
+        # Set x-axis ticks and labels
+        ax.set_xticks(range(len(unique_tiles)))
+        ax.set_xticklabels(unique_tiles, rotation=45, ha='right')
+        
+        # Add statistics text
+        if not data.empty:
+            mean_error = data[error_column].mean()
+            std_error = data[error_column].std()
+            min_error = data[error_column].min()
+            max_error = data[error_column].max()
+            
+            if 'nm' in ylabel:
+                stats_text = f'Mean: {mean_error:.3f} nm\nStd: {std_error:.3f} nm\nMin: {min_error:.3f} nm\nMax: {max_error:.3f} nm'
+            else:
+                stats_text = f'Mean: {mean_error:.3f} THz\nStd: {std_error:.3f} THz\nMin: {min_error:.3f} THz\nMax: {max_error:.3f} THz'
+            
+            ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, 
+                   verticalalignment='top', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    
     def get_tile_sns(self):
         """
         Get the stored TileSN list
@@ -815,12 +1202,20 @@ class LensingStationDataExtractor:
             print("\n--- Single Channel ON Plots ---")
             self.plot_coupling_loss_vs_tile_combined()
             self.plot_wl_vs_tile_combined()
+            
+            print("\n--- Single Channel ON Error Plots ---")
+            self.plot_single_channel_wl_error_vs_tile()
+            self.plot_single_channel_freq_error_vs_tile()
         
         # Create ALL Channel ON plots
         if not all_channel_data.empty:
             print("\n--- ALL Channel ON Plots ---")
             self.plot_all_channel_wl_vs_tile()
             self.plot_all_channel_power_vs_tile()
+            
+            print("\n--- ALL Channel ON Error Plots ---")
+            self.plot_all_channel_wl_error_vs_tile()
+            self.plot_all_channel_freq_error_vs_tile()
         
         print("\n" + "=" * 80)
         print("ANALYSIS COMPLETE")
@@ -831,11 +1226,15 @@ class LensingStationDataExtractor:
             print(f"✅ Single Channel ON: {len(single_channel_data)} measurements")
             print(f"   • Coupling loss plot: {self.plots_dir / 'tp2p0_single_channel_on_coupling_loss_vs_tile_combined.png'}")
             print(f"   • WL plot: {self.plots_dir / 'tp2p0_single_channel_on_wl_vs_tile_combined.png'}")
+            print(f"   • WL error plot: {self.plots_dir / 'tp2p0_single_channel_on_wl_error_vs_tile_combined.png'}")
+            print(f"   • Frequency error plot: {self.plots_dir / 'tp2p0_single_channel_on_freq_error_vs_tile_combined.png'}")
         
         if not all_channel_data.empty:
             print(f"✅ ALL Channel ON: {len(all_channel_data)} measurements")
             print(f"   • WL plot: {self.plots_dir / 'tp2p0_all_channel_on_wl_vs_tile_combined.png'}")
             print(f"   • Power plot: {self.plots_dir / 'tp2p0_all_channel_on_power_vs_tile_combined.png'}")
+            print(f"   • WL error plot: {self.plots_dir / 'tp2p0_all_channel_on_wl_error_vs_tile_combined.png'}")
+            print(f"   • Frequency error plot: {self.plots_dir / 'tp2p0_all_channel_on_freq_error_vs_tile_combined.png'}")
         
         if single_channel_data.empty and all_channel_data.empty:
             print("❌ No data extracted from either Single Channel ON or ALL Channel ON sections.")
