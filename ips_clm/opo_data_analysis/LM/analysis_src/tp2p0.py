@@ -405,7 +405,7 @@ class LensingStationDataExtractor:
         plot_path = self.plots_dir / "tp2p0_single_channel_on_coupling_loss_vs_tile_combined.png"
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
         print(f"✅ Coupling loss plot saved: {plot_path}")
-        plt.show()
+        plt.close()
     
     def _plot_bank_coupling_data(self, ax, data, title):
         """
@@ -516,7 +516,7 @@ class LensingStationDataExtractor:
         plot_path = self.plots_dir / "tp2p0_single_channel_on_wl_vs_tile_combined.png"
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
         print(f"✅ WL plot saved: {plot_path}")
-        plt.show()
+        plt.close()
     
     def _plot_bank_wl_data(self, ax, data, title):
         """
@@ -600,7 +600,7 @@ class LensingStationDataExtractor:
         plot_path = self.plots_dir / "tp2p0_all_channel_on_wl_vs_tile_combined.png"
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
         print(f"✅ ALL channel WL plot saved: {plot_path}")
-        plt.show()
+        plt.close()
     
     def _plot_all_channel_wl_data(self, ax, data, title):
         """
@@ -626,9 +626,20 @@ class LensingStationDataExtractor:
             if not channel_data.empty:
                 # Convert tile names to numeric positions
                 x_positions = [tile_to_position[tile] for tile in channel_data['Tile_SN']]
+                
+                # Map bank1 legend labels from CH9-CH16 to CH1-CH8
+                legend_label = channel
+                if "Bank 1" in title and channel.startswith('CH'):
+                    try:
+                        ch_num = int(channel[2:])  # Extract channel number
+                        if 9 <= ch_num <= 16:
+                            legend_label = f"CH{ch_num - 8}"  # Convert CH9->CH1, CH10->CH2, etc.
+                    except ValueError:
+                        pass  # Keep original label if parsing fails
+                
                 ax.scatter(x_positions, channel_data['WL_nm_All_Channel'], 
                           alpha=0.7, s=60, color=colors[i], 
-                          label=channel, edgecolors='black', linewidth=0.5)
+                          label=legend_label, edgecolors='black', linewidth=0.5)
         
         # Customize plot
         ax.set_xlabel('Tile Serial Number', fontsize=12)
@@ -700,7 +711,7 @@ class LensingStationDataExtractor:
         plot_path = self.plots_dir / "tp2p0_all_channel_on_power_vs_tile_combined.png"
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
         print(f"✅ ALL channel Power plot saved: {plot_path}")
-        plt.show()
+        plt.close()
     
     def get_tile_sns(self):
         """
