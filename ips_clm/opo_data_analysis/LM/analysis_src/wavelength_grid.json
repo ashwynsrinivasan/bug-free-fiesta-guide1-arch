@@ -1,0 +1,126 @@
+{
+  "metadata": {
+    "description": "Wavelength grid configuration for optical analysis",
+    "bank_mapping": {
+      "Set_A": "Bank 0",
+      "Set_B": "Bank 1"
+    },
+    "units": {
+      "wavelength": "nm",
+      "frequency": "THz",
+      "spacing": "nm (wavelength), THz (frequency)"
+    }
+  },
+  "wavelength_grid": {
+    "channels": [
+      {
+        "channel": 1,
+        "Set_A": {
+          "wavelength_nm": 1301.47,
+          "frequency_THz": 230.35
+        },
+        "Set_B": {
+          "wavelength_nm": 1302.60,
+          "frequency_THz": 230.15
+        }
+      },
+      {
+        "channel": 2,
+        "Set_A": {
+          "wavelength_nm": 1303.73,
+          "frequency_THz": 229.95
+        },
+        "Set_B": {
+          "wavelength_nm": 1304.87,
+          "frequency_THz": 229.75
+        }
+      },
+      {
+        "channel": 3,
+        "Set_A": {
+          "wavelength_nm": 1306.01,
+          "frequency_THz": 229.55
+        },
+        "Set_B": {
+          "wavelength_nm": 1307.14,
+          "frequency_THz": 229.35
+        }
+      },
+      {
+        "channel": 4,
+        "Set_A": {
+          "wavelength_nm": 1308.28,
+          "frequency_THz": 229.15
+        },
+        "Set_B": {
+          "wavelength_nm": 1309.43,
+          "frequency_THz": 228.95
+        }
+      },
+      {
+        "channel": 5,
+        "Set_A": {
+          "wavelength_nm": 1310.57,
+          "frequency_THz": 228.75
+        },
+        "Set_B": {
+          "wavelength_nm": 1311.72,
+          "frequency_THz": 228.55
+        }
+      },
+      {
+        "channel": 6,
+        "Set_A": {
+          "wavelength_nm": 1312.87,
+          "frequency_THz": 228.35
+        },
+        "Set_B": {
+          "wavelength_nm": 1314.02,
+          "frequency_THz": 228.15
+        }
+      },
+      {
+        "channel": 7,
+        "Set_A": {
+          "wavelength_nm": 1315.17,
+          "frequency_THz": 227.95
+        },
+        "Set_B": {
+          "wavelength_nm": 1316.33,
+          "frequency_THz": 227.75
+        }
+      },
+      {
+        "channel": 8,
+        "Set_A": {
+          "wavelength_nm": 1317.48,
+          "frequency_THz": 227.55
+        },
+        "Set_B": {
+          "wavelength_nm": 1318.64,
+          "frequency_THz": 227.35
+        }
+      }
+    ]
+  },
+  "center_wavelengths": {
+    "Set_A": {
+      "wavelength_nm": 1309.43,
+      "frequency_THz": 228.95
+    },
+    "Set_B": {
+      "wavelength_nm": 1310.57,
+      "frequency_THz": 228.75
+    }
+  },
+  "channel_spacing": {
+    "Set_A": {
+      "wavelength_nm": 2.29,
+      "frequency_THz": 0.40
+    },
+    "Set_B": {
+      "wavelength_nm": 2.29,
+      "frequency_THz": 0.40
+    }
+  }
+} 
