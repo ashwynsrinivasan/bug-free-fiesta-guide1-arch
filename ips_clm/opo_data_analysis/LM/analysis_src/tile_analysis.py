@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Tile Analysis Script - Combined TP1 to TP2 Data Analysis
+Tile Analysis Script - Combined TP1 to TP3 Data Analysis
 =======================================================
 
-This script combines results from tp1p1.py to tp2p4.py and creates comprehensive
+This script combines results from tp1p1.py to tp3p3.py and creates comprehensive
 tile-specific analysis plots organized by tile serial number.
 
 Data is stored in plots/Tiles/TileSN/ where TileSN is the tile serial number.
@@ -32,6 +32,8 @@ from tp2p0 import LensingStationDataExtractor
 from tp2p1 import TP2P1CombinerAnalyzers
 from tp2p2 import TP2P2CombinerAnalyzers
 from tp2p4 import TP2p4CombinedAnalyzers
+from tp3p1 import TP3P1CombinedAnalyzer
+from tp3p3 import TP3p3CombinedAnalyzers
 
 # Set matplotlib style
 plt.style.use('default')
@@ -44,7 +46,7 @@ class TileAnalyzer:
     """
     Comprehensive Tile Analysis Class
     
-    This class combines data from all test points (TP1-1 to TP2-4) and creates
+    This class combines data from all test points (TP1-1 to TP3-3) and creates
     tile-specific analysis plots organized by tile serial number.
     """
     
@@ -117,6 +119,18 @@ class TileAnalyzer:
             print("   ✓ TP2-4 analyzer initialized")
         except Exception as e:
             print(f"   ⚠️  TP2-4 analyzer failed: {e}")
+            
+        try:
+            self.analyzers['tp3p1'] = TP3P1CombinedAnalyzer()
+            print("   ✓ TP3-1 analyzer initialized")
+        except Exception as e:
+            print(f"   ⚠️  TP3-1 analyzer failed: {e}")
+            
+        try:
+            self.analyzers['tp3p3'] = TP3p3CombinedAnalyzers()
+            print("   ✓ TP3-3 analyzer initialized")
+        except Exception as e:
+            print(f"   ⚠️  TP3-3 analyzer failed: {e}")
     
     def discover_tiles_from_plots(self):
         """Discover additional tiles from existing plot files"""
@@ -128,7 +142,9 @@ class TileAnalyzer:
             self.plots_dir / "TP2-0",
             self.plots_dir / "TP2-1",
             self.plots_dir / "TP2-2",
-            self.plots_dir / "TP2-4"
+            self.plots_dir / "TP2-4",
+            self.plots_dir / "TP3-1",
+            self.plots_dir / "TP3-3"
         ]
         
         plot_patterns = [
@@ -148,6 +164,13 @@ class TileAnalyzer:
             # TP2-4 patterns
             "AnnotatePower_*.png",
             "Wavelength_Spectrum_*.png",
+            "Wavelength_Setpoint_*.png",
+            # TP3-1 patterns
+            "LIV_*.png",
+            "MPD_*.png",
+            "VOA_*.png",
+            "Wavelength_vs_VOA_*.png",
+            # TP3-3 patterns
             "Wavelength_Setpoint_*.png"
         ]
         
@@ -261,6 +284,15 @@ class TileAnalyzer:
             (self.plots_dir / "TP2-4" / f"AnnotatePower_{tile_sn}.png", "TP2-4: Annotated Power"),
             (self.plots_dir / "TP2-4" / f"Wavelength_Spectrum_{tile_sn}.png", "TP2-4: Wavelength Spectrum"),
             (self.plots_dir / "TP2-4" / f"Wavelength_Setpoint_{tile_sn}.png", "TP2-4: Wavelength Setpoint"),
+            
+            # TP3-1 plots
+            (self.plots_dir / "TP3-1" / f"LIV_{tile_sn}.png", "TP3-1: LIV Analysis"),
+            (self.plots_dir / "TP3-1" / f"MPD_{tile_sn}.png", "TP3-1: MPD Analysis"),
+            (self.plots_dir / "TP3-1" / f"VOA_{tile_sn}.png", "TP3-1: VOA Analysis"),
+            (self.plots_dir / "TP3-1" / f"Wavelength_vs_VOA_{tile_sn}.png", "TP3-1: Wavelength vs VOA"),
+            
+            # TP3-3 plots
+            (self.plots_dir / "TP3-3" / f"Wavelength_Setpoint_{tile_sn}.png", "TP3-3: Wavelength Setpoint"),
         ]
         
         # Check which plots exist for this tile
@@ -367,6 +399,11 @@ class TileAnalyzer:
                 self.plots_dir / "TP2-4" / f"AnnotatePower_{tile_sn}.png",
                 self.plots_dir / "TP2-4" / f"Wavelength_Spectrum_{tile_sn}.png",
                 self.plots_dir / "TP2-4" / f"Wavelength_Setpoint_{tile_sn}.png",
+                self.plots_dir / "TP3-1" / f"LIV_{tile_sn}.png",
+                self.plots_dir / "TP3-1" / f"MPD_{tile_sn}.png",
+                self.plots_dir / "TP3-1" / f"VOA_{tile_sn}.png",
+                self.plots_dir / "TP3-1" / f"Wavelength_vs_VOA_{tile_sn}.png",
+                self.plots_dir / "TP3-3" / f"Wavelength_Setpoint_{tile_sn}.png",
             ]
             
             available_count = sum(1 for plot_path in plot_sources if plot_path.exists())
@@ -386,7 +423,7 @@ class TileAnalyzer:
         ax1.set_title('Available Detailed Plots per Tile')
         ax1.set_ylabel('Number of Plots')
         ax1.set_xlabel('Tile Index')
-        ax1.set_ylim(0, 12)  # Max 12 plot types now
+        ax1.set_ylim(0, 17)  # Max 17 plot types now (12 original + 4 TP3-1 + 1 TP3-3)
         
         # Plot 2: Plot Coverage Score Distribution
         ax2.hist(summary_data['plot_coverage_score'], bins=20, alpha=0.7)
@@ -418,7 +455,7 @@ class TileAnalyzer:
     def run_analysis(self):
         """Run the complete tile analysis"""
         print("=" * 80)
-        print("🚀 COMPREHENSIVE TILE ANALYSIS - TP1 TO TP2 DATA")
+        print("🚀 COMPREHENSIVE TILE ANALYSIS - TP1 TO TP3 DATA")
         print("=" * 80)
         print("Analysis Date:", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         print("=" * 80)
@@ -445,7 +482,7 @@ class TileAnalyzer:
         print(f"📊 Processed {len(self.available_tiles)} tiles")
         print(f"📁 Output directory: {self.tile_plots_dir}")
         print(f"🔍 Individual detailed analysis plots organized by serial number")
-        print(f"🎨 Each tile directory contains combined plots from TP1 to TP2 analysis")
+        print(f"🎨 Each tile directory contains combined plots from TP1 to TP3 analysis")
         print("=" * 80)
 
 
