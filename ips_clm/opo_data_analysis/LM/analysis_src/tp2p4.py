@@ -146,7 +146,16 @@ class TP2p4CombinedAnalyzers:
         # Calculate wavelength errors for all data
         wavelength_errors = []
         for _, row in self.processed_data.iterrows():
-            wl_error = self.calculate_wavelength_error(row['OSA_Wave(nm)'], row['Bank'], row['Channel'])
+            # Convert OSA_Wave(nm) to numeric, handling string values
+            try:
+                wavelength_value = pd.to_numeric(row['OSA_Wave(nm)'], errors='coerce')
+                if pd.isna(wavelength_value):
+                    wl_error = 0.0
+                else:
+                    wl_error = self.calculate_wavelength_error(wavelength_value, row['Bank'], row['Channel'])
+            except Exception as e:
+                print(f"Error processing wavelength for tile {row.get('TileSerialNumber', 'unknown')}: {e}")
+                wl_error = 0.0
             wavelength_errors.append(wl_error)
         
         self.processed_data['WavelengthError'] = wavelength_errors
@@ -159,7 +168,7 @@ class TP2p4CombinedAnalyzers:
         # Get unique tiles and channels
         tiles = sorted(self.processed_data['TileSerialNumber'].unique())
         channels = sorted(self.processed_data['Channel'].unique())
-        colors = plt.cm.get_cmap('tab10')(np.linspace(0, 1, len(channels)))
+        colors = plt.colormaps.get_cmap('tab10')(np.linspace(0, 1, len(channels)))
         
         # Plot for Bank 0
         bank0_data = self.processed_data[self.processed_data['Bank'] == 0]
@@ -273,7 +282,16 @@ class TP2p4CombinedAnalyzers:
         # Calculate frequency errors for all data (reuse existing method)
         frequency_errors = []
         for _, row in self.processed_data.iterrows():
-            freq_error = self.calculate_frequency_error(row['OSA_Wave(nm)'], row['Bank'], row['Channel'])
+            # Convert OSA_Wave(nm) to numeric, handling string values
+            try:
+                wavelength_value = pd.to_numeric(row['OSA_Wave(nm)'], errors='coerce')
+                if pd.isna(wavelength_value):
+                    freq_error = 0.0
+                else:
+                    freq_error = self.calculate_frequency_error(wavelength_value, row['Bank'], row['Channel'])
+            except Exception as e:
+                print(f"Error processing frequency for tile {row.get('TileSerialNumber', 'unknown')}: {e}")
+                freq_error = 0.0
             frequency_errors.append(freq_error)
         
         self.processed_data['FrequencyError'] = frequency_errors
@@ -286,7 +304,7 @@ class TP2p4CombinedAnalyzers:
         # Get unique tiles and channels
         tiles = sorted(self.processed_data['TileSerialNumber'].unique())
         channels = sorted(self.processed_data['Channel'].unique())
-        colors = plt.cm.get_cmap('tab10')(np.linspace(0, 1, len(channels)))
+        colors = plt.colormaps.get_cmap('tab10')(np.linspace(0, 1, len(channels)))
         
         # Plot for Bank 0
         bank0_data = self.processed_data[self.processed_data['Bank'] == 0]
@@ -475,7 +493,16 @@ class TP2p4CombinedAnalyzers:
                 # Calculate frequency error for each data point
                 frequency_errors = []
                 for _, row in bank0_data.iterrows():
-                    freq_error = self.calculate_frequency_error(row['OSA_Wave(nm)'], 0, row['Channel'])
+                    # Convert OSA_Wave(nm) to numeric, handling string values
+                    try:
+                        wavelength_value = pd.to_numeric(row['OSA_Wave(nm)'], errors='coerce')
+                        if pd.isna(wavelength_value):
+                            freq_error = 0.0
+                        else:
+                            freq_error = self.calculate_frequency_error(wavelength_value, 0, row['Channel'])
+                    except Exception as e:
+                        print(f"Error calculating frequency error for bank 0, channel {row['Channel']}: {e}")
+                        freq_error = 0.0
                     frequency_errors.append(freq_error)
                 
                 # Plot Set Laser (mA) on left y-axis
@@ -522,7 +549,16 @@ class TP2p4CombinedAnalyzers:
                 # Calculate frequency error for each data point
                 frequency_errors = []
                 for _, row in bank1_data.iterrows():
-                    freq_error = self.calculate_frequency_error(row['OSA_Wave(nm)'], 1, row['Channel'])
+                    # Convert OSA_Wave(nm) to numeric, handling string values
+                    try:
+                        wavelength_value = pd.to_numeric(row['OSA_Wave(nm)'], errors='coerce')
+                        if pd.isna(wavelength_value):
+                            freq_error = 0.0
+                        else:
+                            freq_error = self.calculate_frequency_error(wavelength_value, 1, row['Channel'])
+                    except Exception as e:
+                        print(f"Error calculating frequency error for bank 1, channel {row['Channel']}: {e}")
+                        freq_error = 0.0
                     frequency_errors.append(freq_error)
                 
                 # Plot Set Laser (mA) on left y-axis
@@ -1130,7 +1166,7 @@ class TP2p4CombinedAnalyzers:
         # Get unique tiles for x-axis
         tiles = sorted(self.processed_data['TileSerialNumber'].unique())
         channels = list(range(1, 9))  # Channels 1-8
-        colors = plt.cm.get_cmap('tab10')(np.linspace(0, 1, len(channels)))
+        colors = plt.colormaps.get_cmap('tab10')(np.linspace(0, 1, len(channels)))
         
         # Plot for Bank 0
         if all_power_data['Bank0']:
@@ -1349,7 +1385,23 @@ class TP2p4CombinedAnalyzers:
                     continue
                 
                 # Get OSA_Wave wavelengths from TP2-4 data
-                tp2_4_wavelengths = tp2_4_bank_data['OSA_Wave(nm)'].values
+                tp2_4_wavelengths_raw = tp2_4_bank_data['OSA_Wave(nm)'].values
+                
+                # Convert to numeric, handling any string values
+                try:
+                    tp2_4_wavelengths_numeric = pd.to_numeric(tp2_4_wavelengths_raw, errors='coerce')
+                    # Get valid indices (non-NaN values)
+                    valid_indices = ~np.isnan(tp2_4_wavelengths_numeric)
+                    tp2_4_wavelengths = tp2_4_wavelengths_numeric[valid_indices]
+                    valid_rows = tp2_4_bank_data[valid_indices]
+                    
+                    if len(tp2_4_wavelengths) == 0:
+                        print(f"⚠️  No valid wavelength data found for {tile} Bank {bank_num}")
+                        continue
+                        
+                except Exception as e:
+                    print(f"⚠️  Error converting wavelength data for {tile} Bank {bank_num}: {e}")
+                    continue
                 
                 # For each peak, find closest TP2-4 wavelength
                 for peak_idx, peak in enumerate(peaks):
@@ -1363,8 +1415,8 @@ class TP2p4CombinedAnalyzers:
                         closest_tp2_4_wl = tp2_4_wavelengths[closest_idx]
                         wavelength_diff = peak_wl - closest_tp2_4_wl
                         
-                        # Get channel info for the closest match
-                        closest_row = tp2_4_bank_data.iloc[closest_idx]
+                        # Get channel info for the closest match using valid_rows
+                        closest_row = valid_rows.iloc[closest_idx]
                         channel = closest_row['Channel']
                         
                         comparison_results.append({
@@ -1458,7 +1510,7 @@ class TP2p4CombinedAnalyzers:
         # Get unique tiles and channels
         tiles = sorted(power_data['TileSerialNumber'].unique())
         channels = sorted(power_data['Channel'].unique())
-        colors = plt.cm.get_cmap('tab10')(np.linspace(0, 1, len(channels)))
+        colors = plt.colormaps.get_cmap('tab10')(np.linspace(0, 1, len(channels)))
         
         # Create separate colors for Bank 0 and Bank 1
         bank_colors = ['blue', 'red']
@@ -1827,7 +1879,7 @@ class TP2p4CombinedAnalyzers:
             ax2.set_ylim(ylim)
             
             # Create color map for different channel pair combinations
-            colors = plt.cm.get_cmap('tab10')(np.linspace(0, 1, len(channel_pairs)))
+            colors = plt.colormaps.get_cmap('tab10')(np.linspace(0, 1, len(channel_pairs)))
             color_map = {pair: colors[i] for i, pair in enumerate(channel_pairs)}
             
             # Plot for Bank 0
