@@ -2349,9 +2349,36 @@ class module_analysis:
                 power_mw = df[col] / 1000.0
                 ax.plot(time, power_mw, linewidth=1.5, linestyle=linestyle,
                        label=f'Laser_{i}', alpha=0.8)
+            
+            # Add specification limits
+            spec_lower = spec_name.lower()
+            if self.specifications and spec_lower in self.specifications:
+                spec_data = self.specifications[spec_lower]
+                
+                # Add min/max power limits
+                if 'min_power' in spec_data:
+                    min_power_dbm = spec_data['min_power']['value']
+                    # Convert dBm to mW: P(mW) = 10^(P(dBm)/10)
+                    min_power_mw = 10 ** (min_power_dbm / 10.0)
+                    ax.axhline(y=min_power_mw, color='red', linestyle='--', linewidth=1.5, 
+                              label=f'Min: {min_power_dbm}dBm', alpha=0.7)
+                
+                if 'max_power' in spec_data:
+                    max_power_dbm = spec_data['max_power']['value']
+                    max_power_mw = 10 ** (max_power_dbm / 10.0)
+                    ax.axhline(y=max_power_mw, color='red', linestyle='--', linewidth=1.5,
+                              label=f'Max: {max_power_dbm}dBm', alpha=0.7)
+                
+                # Add typical power if available
+                if 'typical_power' in spec_data:
+                    typ_power_dbm = spec_data['typical_power']['value']
+                    typ_power_mw = 10 ** (typ_power_dbm / 10.0)
+                    ax.axhline(y=typ_power_mw, color='green', linestyle=':', linewidth=1.5,
+                              label=f'Typ: {typ_power_dbm}dBm', alpha=0.7)
+            
             ax.set_ylabel('Power (mW)')
             ax.set_title(f'{spec_name} - Calculated Laser Power vs. Time')
-            ax.legend(loc='best', fontsize=7, ncol=4)
+            ax.legend(loc='best', fontsize=6, ncol=4)
             ax.grid(True, alpha=0.3)
         
         # Row 4: Frequency Offset
@@ -2374,10 +2401,26 @@ class module_analysis:
                     ax.plot(time, freq_offset, linewidth=1.5, linestyle=linestyle,
                            label=f'Freq_{i}', alpha=0.8)
             
+            # Add specification limits for wavelength error
+            spec_lower = spec_name.lower()
+            if self.specifications and spec_lower in self.specifications:
+                spec_data = self.specifications[spec_lower]
+                
+                if 'wavelength_error' in spec_data:
+                    freq_error_limit = spec_data['wavelength_error']['value']
+                    # Add shaded region for allowed frequency error
+                    ax.axhspan(-freq_error_limit, freq_error_limit, 
+                              color='green', alpha=0.1, label=f'Spec: ±{freq_error_limit}GHz')
+                    # Add limit lines
+                    ax.axhline(y=freq_error_limit, color='red', linestyle='--', 
+                              linewidth=1.5, alpha=0.7)
+                    ax.axhline(y=-freq_error_limit, color='red', linestyle='--', 
+                              linewidth=1.5, alpha=0.7)
+            
             ax.set_ylabel('Frequency (GHz offset)')
             ax.set_xlabel('Time (s)')
             ax.set_title(f'{spec_name} - Frequency Offset vs. Time')
-            ax.legend(loc='best', fontsize=7, ncol=4)
+            ax.legend(loc='best', fontsize=6, ncol=4)
             ax.grid(True, alpha=0.3)
             ax.axhline(y=0, color='k', linestyle='-', linewidth=0.5)
     
