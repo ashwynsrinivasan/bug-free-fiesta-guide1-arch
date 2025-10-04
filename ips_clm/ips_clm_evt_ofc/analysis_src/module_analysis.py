@@ -2342,12 +2342,13 @@ class module_analysis:
         ax = axes[3]
         power_pic_columns = [col for col in df.columns if col.startswith('power_PIC_')]
         if power_pic_columns:
-            # Convert uW to mW and calculate power
+            # Convert uW to dBm
             for i, col in enumerate(power_pic_columns):
                 linestyle = '-' if i < 8 else '--'
-                # Convert to mW: power_mw = power_uw / 1000
-                power_mw = df[col] / 1000.0
-                ax.plot(time, power_mw, linewidth=1.5, linestyle=linestyle,
+                # Convert uW to dBm: P(dBm) = 10*log10(P(uW)/1000)
+                power_uw = df[col]
+                power_dbm = 10 * np.log10(np.maximum(power_uw / 1000.0, 1e-10))
+                ax.plot(time, power_dbm, linewidth=1.5, linestyle=linestyle,
                        label=f'Laser_{i}', alpha=0.8)
             
             # Add specification limits
@@ -2355,28 +2356,24 @@ class module_analysis:
             if self.specifications and spec_lower in self.specifications:
                 spec_data = self.specifications[spec_lower]
                 
-                # Add min/max power limits
+                # Add min/max power limits (already in dBm)
                 if 'min_power' in spec_data:
                     min_power_dbm = spec_data['min_power']['value']
-                    # Convert dBm to mW: P(mW) = 10^(P(dBm)/10)
-                    min_power_mw = 10 ** (min_power_dbm / 10.0)
-                    ax.axhline(y=min_power_mw, color='red', linestyle='--', linewidth=1.5, 
-                              label=f'Min: {min_power_dbm}dBm', alpha=0.7)
+                    ax.axhline(y=min_power_dbm, color='red', linestyle='--', linewidth=2.0, 
+                              label=f'Min: {min_power_dbm}dBm', alpha=0.8)
                 
                 if 'max_power' in spec_data:
                     max_power_dbm = spec_data['max_power']['value']
-                    max_power_mw = 10 ** (max_power_dbm / 10.0)
-                    ax.axhline(y=max_power_mw, color='red', linestyle='--', linewidth=1.5,
-                              label=f'Max: {max_power_dbm}dBm', alpha=0.7)
+                    ax.axhline(y=max_power_dbm, color='red', linestyle='--', linewidth=2.0,
+                              label=f'Max: {max_power_dbm}dBm', alpha=0.8)
                 
                 # Add typical power if available
                 if 'typical_power' in spec_data:
                     typ_power_dbm = spec_data['typical_power']['value']
-                    typ_power_mw = 10 ** (typ_power_dbm / 10.0)
-                    ax.axhline(y=typ_power_mw, color='green', linestyle=':', linewidth=1.5,
-                              label=f'Typ: {typ_power_dbm}dBm', alpha=0.7)
+                    ax.axhline(y=typ_power_dbm, color='green', linestyle=':', linewidth=2.0,
+                              label=f'Typ: {typ_power_dbm}dBm', alpha=0.8)
             
-            ax.set_ylabel('Power (mW)')
+            ax.set_ylabel('Power (dBm)')
             ax.set_title(f'{spec_name} - Calculated Laser Power vs. Time')
             ax.legend(loc='best', fontsize=6, ncol=4)
             ax.grid(True, alpha=0.3)
