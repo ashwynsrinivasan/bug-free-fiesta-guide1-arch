@@ -2475,7 +2475,7 @@ class module_analysis:
             ax.axhline(y=0, color='k', linestyle='-', linewidth=0.5)
     
     def _load_smsr_data(self, module_path, spec_type):
-        """Load SMSR data from 'Power and SMSR' tab"""
+        """Load SMSR data from 'Power and SMSR' or 'SMSR and Power' tab"""
         # Find the Excel file
         if spec_type.lower() == 'endeavour':
             excel_files = list(module_path.glob("*Endeavour*EVT*.xlsx")) + list(module_path.glob("*Endevour*EVT*.xlsx"))
@@ -2487,13 +2487,18 @@ class module_analysis:
         
         excel_file = excel_files[0]
         
-        try:
-            # Try to read "Power and SMSR" sheet
-            df = pd.read_excel(excel_file, sheet_name='Power and SMSR')
-            return df
-        except Exception as e:
-            # Sheet might not exist or have different name
-            return None
+        # Try different sheet name variations
+        sheet_names = ['Power and SMSR', 'SMSR and Power', 'power and smsr', 'smsr and power']
+        
+        for sheet_name in sheet_names:
+            try:
+                df = pd.read_excel(excel_file, sheet_name=sheet_name)
+                return df
+            except:
+                continue
+        
+        # Sheet not found with any name variation
+        return None
     
     def create_calibration_setpoints_summary(self, modules):
         """
