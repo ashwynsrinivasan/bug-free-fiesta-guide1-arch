@@ -1494,6 +1494,9 @@ class module_analysis:
                     ax.axhline(y=error_limit, color='red', linestyle='--', linewidth=2, alpha=0.7)
                     ax.axhline(y=-error_limit, color='red', linestyle='--', linewidth=2, alpha=0.7)
                 ax.axhline(y=0, color='k', linestyle='-', linewidth=0.5)
+            elif data_type == 'smsr':
+                # Add 40dB spec line for SMSR (both Endeavour and Kenya)
+                ax.axhline(y=40, color='red', linestyle='--', linewidth=2, alpha=0.7, label='Spec: 40dB')
         
         # Set labels
         ax.set_xlabel('Tile SN')
@@ -1508,6 +1511,10 @@ class module_analysis:
         center_positions = [i * 2 + 0.25 for i in range(len(all_sns))]
         ax.set_xticks(center_positions)
         ax.set_xticklabels(all_sns, rotation=45, ha='right')
+        
+        # Set y-limits for SMSR plots
+        if data_type == 'smsr':
+            ax.set_ylim(30, 60)
         
         # Legend
         legend_elements = [Patch(facecolor=bank0_color, alpha=0.5, label='Bank 0'),
