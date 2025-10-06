@@ -2491,15 +2491,22 @@ class module_analysis:
         
         excel_file = excel_files[0]
         
-        # Try different sheet name variations
-        sheet_names = ['Power and SMSR', 'SMSR and Power', 'power and smsr', 'smsr and power']
-        
-        for sheet_name in sheet_names:
-            try:
-                df = pd.read_excel(excel_file, sheet_name=sheet_name)
-                return df
-            except:
-                continue
+        # Get all sheet names and do case-insensitive matching
+        try:
+            xls = pd.ExcelFile(excel_file)
+            actual_sheets = xls.sheet_names
+            
+            # Try different sheet name patterns (case-insensitive)
+            target_patterns = ['power and smsr', 'smsr and power']
+            
+            for pattern in target_patterns:
+                for actual_sheet in actual_sheets:
+                    if actual_sheet.lower() == pattern:
+                        df = pd.read_excel(excel_file, sheet_name=actual_sheet)
+                        return df
+        except Exception as e:
+            print(f"    Warning: Could not load SMSR data from {excel_file.name}: {e}")
+            return None
         
         # Sheet not found with any name variation
         return None
