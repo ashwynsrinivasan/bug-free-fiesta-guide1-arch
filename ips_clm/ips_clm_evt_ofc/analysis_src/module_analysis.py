@@ -2476,11 +2476,15 @@ class module_analysis:
     
     def _load_smsr_data(self, module_path, spec_type):
         """Load SMSR data from 'Power and SMSR' or 'SMSR and Power' tab"""
-        # Find the Excel file
+        # Find the Excel file - try multiple naming patterns
         if spec_type.lower() == 'endeavour':
-            excel_files = list(module_path.glob("*Endeavour*EVT*.xlsx")) + list(module_path.glob("*Endevour*EVT*.xlsx"))
+            excel_files = (list(module_path.glob("*Endeavour*EVT*.xlsx")) + 
+                          list(module_path.glob("*Endevour*EVT*.xlsx")) +
+                          list(module_path.glob("EVT*Endeavour*.xlsx")) +
+                          list(module_path.glob("EVT*Endevour*.xlsx")))
         else:
-            excel_files = list(module_path.glob("*Kenya*EVT*.xlsx"))
+            excel_files = (list(module_path.glob("*Kenya*EVT*.xlsx")) +
+                          list(module_path.glob("EVT*Kenya*.xlsx")))
         
         if not excel_files:
             return None
