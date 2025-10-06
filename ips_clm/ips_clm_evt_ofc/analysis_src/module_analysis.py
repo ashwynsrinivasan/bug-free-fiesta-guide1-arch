@@ -1497,7 +1497,12 @@ class module_analysis:
         
         # Set labels
         ax.set_xlabel('Tile SN')
-        ylabel = 'Power (dBm)' if data_type == 'power' else 'Frequency Error (GHz)'
+        if data_type == 'power':
+            ylabel = 'Power (dBm)'
+        elif data_type == 'freq':
+            ylabel = 'Frequency Error (GHz)'
+        else:  # smsr
+            ylabel = 'SMSR (dB)'
         ax.set_ylabel(ylabel)
         ax.set_title(title)
         center_positions = [i * 2 + 0.25 for i in range(len(all_sns))]
@@ -1511,25 +1516,63 @@ class module_analysis:
         ax.grid(True, alpha=0.3, axis='y')
     
     def create_mission_mode_summary(self, modules_data):
-        """Create mission mode summary plot with 2x2 subplots"""
+        """Create mission mode summary plot with 3x2 subplots (power, freq error, SMSR)"""
         print(f"\n{'='*60}")
         print("Creating Mission Mode Summary Plot")
         print(f"{'='*60}")
         
-        # Create figure with 2x2 subplots
-        fig, axes = plt.subplots(2, 2, figsize=(16, 12))
+        # Create figure with 3x2 subplots
+        fig, axes = plt.subplots(3, 2, figsize=(16, 18))
         
         # Process data for each module
         # Structure: {sn: {bank: {channel: value}}}
         endeavour_power_data = {}
         endeavour_freq_data = {}
+        endeavour_smsr_data = {}
         kenya_power_data = {}
         kenya_freq_data = {}
+        kenya_smsr_data = {}
         
         # Speed of light constant for frequency calculation
         c_speed_light = 299792.458
         
         for full_sn, data in sorted(modules_data.items()):
+            # Load SMSR data from "Power and SMSR" tab
+            module_sn = full_sn.replace('Y2534000', '')
+            module_path = self.base_path / module_sn
+            
+            # Load Endeavour SMSR
+            endeavour_smsr_df = self._load_smsr_data(module_path, 'endeavour')
+            if endeavour_smsr_df is not None:
+                for idx, row in endeavour_smsr_df.iterrows():
+                    if pd.isna(row['bank']) or pd.isna(row['channel']) or pd.isna(row['SMSR']):
+                        continue
+                    channel = int(row['channel'])
+                    bank = int(row['bank'])
+                    smsr_value = float(row['SMSR'])
+                    
+                    if full_sn not in endeavour_smsr_data:
+                        endeavour_smsr_data[full_sn] = {}
+                    if bank not in endeavour_smsr_data[full_sn]:
+                        endeavour_smsr_data[full_sn][bank] = {}
+                    endeavour_smsr_data[full_sn][bank][channel] = smsr_value
+            
+            # Load Kenya SMSR
+            kenya_smsr_df = self._load_smsr_data(module_path, 'kenya')
+            if kenya_smsr_df is not None:
+                for idx, row in kenya_smsr_df.iterrows():
+                    if pd.isna(row['bank']) or pd.isna(row['channel']) or pd.isna(row['SMSR']):
+                        continue
+                    channel = int(row['channel'])
+                    bank = int(row['bank'])
+                    smsr_value = float(row['SMSR'])
+                    
+                    if full_sn not in kenya_smsr_data:
+                        kenya_smsr_data[full_sn] = {}
+                    if bank not in kenya_smsr_data[full_sn]:
+                        kenya_smsr_data[full_sn][bank] = {}
+                    kenya_smsr_data[full_sn][bank][channel] = smsr_value
+            
             # Process Endeavour data
             if data['endeavour'] is not None:
                 df = data['endeavour']
@@ -1665,25 +1708,35 @@ class module_analysis:
         bank0_color = 'blue'
         bank1_color = 'orange'
         
-        # Plot 1: Endeavour Power (top-left)
+        # Plot 1: Endeavour Power (row 0, left)
         ax = axes[0, 0]
         self._plot_boxplot_with_scatter(ax, endeavour_power_data, all_sns, 'endeavour', 'power', 
                                         'Endeavour - Mission Mode Power')
         
-        # Plot 2: Kenya Power (top-right)
+        # Plot 2: Kenya Power (row 0, right)
         ax = axes[0, 1]
         self._plot_boxplot_with_scatter(ax, kenya_power_data, all_sns, 'kenya', 'power',
                                         'Kenya - Mission Mode Power')
         
-        # Plot 3: Endeavour Frequency Error (bottom-left)
+        # Plot 3: Endeavour Frequency Error (row 1, left)
         ax = axes[1, 0]
         self._plot_boxplot_with_scatter(ax, endeavour_freq_data, all_sns, 'endeavour', 'freq',
                                         'Endeavour - Mission Mode Frequency Error')
         
-        # Plot 4: Kenya Frequency Error (bottom-right)
+        # Plot 4: Kenya Frequency Error (row 1, right)
         ax = axes[1, 1]
         self._plot_boxplot_with_scatter(ax, kenya_freq_data, all_sns, 'kenya', 'freq',
                                         'Kenya - Mission Mode Frequency Error')
+        
+        # Plot 5: Endeavour SMSR (row 2, left)
+        ax = axes[2, 0]
+        self._plot_boxplot_with_scatter(ax, endeavour_smsr_data, all_sns, 'endeavour', 'smsr',
+                                        'Endeavour - SMSR')
+        
+        # Plot 6: Kenya SMSR (row 2, right)
+        ax = axes[2, 1]
+        self._plot_boxplot_with_scatter(ax, kenya_smsr_data, all_sns, 'kenya', 'smsr',
+                                        'Kenya - SMSR')
         
         plt.tight_layout()
         
@@ -2420,6 +2473,27 @@ class module_analysis:
             ax.legend(loc='best', fontsize=6, ncol=4)
             ax.grid(True, alpha=0.3)
             ax.axhline(y=0, color='k', linestyle='-', linewidth=0.5)
+    
+    def _load_smsr_data(self, module_path, spec_type):
+        """Load SMSR data from 'Power and SMSR' tab"""
+        # Find the Excel file
+        if spec_type.lower() == 'endeavour':
+            excel_files = list(module_path.glob("*Endeavour*EVT*.xlsx")) + list(module_path.glob("*Endevour*EVT*.xlsx"))
+        else:
+            excel_files = list(module_path.glob("*Kenya*EVT*.xlsx"))
+        
+        if not excel_files:
+            return None
+        
+        excel_file = excel_files[0]
+        
+        try:
+            # Try to read "Power and SMSR" sheet
+            df = pd.read_excel(excel_file, sheet_name='Power and SMSR')
+            return df
+        except Exception as e:
+            # Sheet might not exist or have different name
+            return None
     
     def create_calibration_setpoints_summary(self, modules):
         """
