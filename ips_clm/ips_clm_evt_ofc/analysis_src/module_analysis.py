@@ -4118,52 +4118,62 @@ class temperature_aggressors_2:
             ax = axes[plot_idx]
             tile_data = wavemeter_df[wavemeter_df['tile_id'] == tile_id]
             
-            # Load reference frequencies (using first cycle as reference)
-            # Note: wavelength_nm column actually contains frequency data
-            ref_frequencies = {}
+            # Load reference wavelengths (using first cycle as reference)
+            # Note: wavelength_nm column contains wavelength data off by 12 orders of magnitude
+            # Multiply by 1e9 to convert to nm
+            ref_wavelengths = {}
             cycle_0_data = tile_data[tile_data['cycle_number'] == 0]
             for idx, row in cycle_0_data.iterrows():
                 bank_type = row['bank_type']
-                frequencies = np.array(row['wavelength_nm'])
-                if len(frequencies) > 1:
-                    frequencies = frequencies[1:]  # Skip first element
-                    # Filter out invalid frequency data (8000000000.0)
-                    valid_mask = frequencies < 8000000000.0
+                wavelengths_raw = np.array(row['wavelength_nm'])
+                if len(wavelengths_raw) > 1:
+                    wavelengths_raw = wavelengths_raw[1:]  # Skip first element
+                    # Filter out invalid wavelength data (8000000000.0)
+                    valid_mask = wavelengths_raw < 8000000000.0
                     if valid_mask.any():
-                        frequencies = frequencies[valid_mask]
-                        ref_frequencies[bank_type] = frequencies
+                        wavelengths_raw = wavelengths_raw[valid_mask]
+                        # Convert to nm by multiplying by 1e9
+                        wavelengths_nm = wavelengths_raw * 1e9
+                        ref_wavelengths[bank_type] = wavelengths_nm
+            
+            # Speed of light constant
+            c_speed_light = 299792.458  # THz*nm
             
             # Plot both banks
             for bank_type in ['BANK_A', 'BANK_B']:
                 bank_data = tile_data[tile_data['bank_type'] == bank_type]
                 
-                if bank_type not in ref_frequencies:
+                if bank_type not in ref_wavelengths:
                     continue
                 
-                ref_freq = ref_frequencies[bank_type]
+                ref_wl = ref_wavelengths[bank_type]
                 
                 for idx, row in bank_data.iterrows():
                     time_sec = row['time_seconds']
-                    frequencies = np.array(row['wavelength_nm'])
+                    wavelengths_raw = np.array(row['wavelength_nm'])
                     
-                    if len(frequencies) > 1:
-                        frequencies = frequencies[1:]  # Skip first element
+                    if len(wavelengths_raw) > 1:
+                        wavelengths_raw = wavelengths_raw[1:]  # Skip first element
                         
-                        # Filter out invalid frequency data (8000000000.0)
-                        valid_mask = frequencies < 8000000000.0
+                        # Filter out invalid wavelength data (8000000000.0)
+                        valid_mask = wavelengths_raw < 8000000000.0
                         if not valid_mask.any():
                             continue
                         
-                        frequencies = frequencies[valid_mask]
+                        wavelengths_raw = wavelengths_raw[valid_mask]
+                        # Convert to nm by multiplying by 1e9
+                        wavelengths_nm = wavelengths_raw * 1e9
                         
-                        # Ensure frequencies and ref_freq have same length
-                        min_len = min(len(frequencies), len(ref_freq))
-                        frequencies = frequencies[:min_len]
-                        ref_freq_subset = ref_freq[:min_len]
+                        # Ensure wavelengths and ref_wl have same length
+                        min_len = min(len(wavelengths_nm), len(ref_wl))
+                        wavelengths_nm = wavelengths_nm[:min_len]
+                        ref_wl_subset = ref_wl[:min_len]
                         
                         # Calculate frequency error in GHz
-                        # Data is already in frequency units (Hz), convert to GHz
-                        freq_error_ghz = (frequencies - ref_freq_subset) / 1e9
+                        # freq (THz) = c / wavelength_nm
+                        measured_freq_thz = c_speed_light / wavelengths_nm
+                        ref_freq_thz = c_speed_light / ref_wl_subset
+                        freq_error_ghz = (measured_freq_thz - ref_freq_thz) * 1000
                         
                         # Create time array for this measurement
                         time_array = np.full(len(freq_error_ghz), time_sec)
