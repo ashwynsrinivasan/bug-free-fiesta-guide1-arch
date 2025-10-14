@@ -3973,7 +3973,7 @@ class temperature_aggressors_2:
         return temp_df
     
     def plot_missionmode_power(self):
-        """Plot optical power vs time for all tiles."""
+        """Plot optical power vs time for all tiles in a 4x4 grid."""
         print("Plotting mission mode power for all tiles...")
         
         # Load data
@@ -3988,12 +3988,17 @@ class temperature_aggressors_2:
         colors_a = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
         colors_b = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
         
-        # Plot each tile
-        for tile_id in tile_ids:
+        # Create figure with 4x4 subplots
+        fig, axes = plt.subplots(4, 4, figsize=(24, 24))
+        axes = axes.flatten()
+        
+        # Plot each tile in a separate subplot
+        for plot_idx, tile_id in enumerate(tile_ids):
+            if plot_idx >= 16:  # Only plot up to 16 tiles
+                break
+                
+            ax = axes[plot_idx]
             tile_data = wavemeter_df[wavemeter_df['tile_id'] == tile_id]
-            
-            # Create figure with single subplot for both banks
-            fig, ax = plt.subplots(1, 1, figsize=(16, 6))
             
             # Plot both banks
             for bank_type in ['BANK_A', 'BANK_B']:
@@ -4017,31 +4022,31 @@ class temperature_aggressors_2:
                         # Plot each channel
                         for ch_idx, (t, p) in enumerate(zip(time_array, power_dbm)):
                             if ch_idx < 8:  # Only 8 channels
-                                ax.scatter(t, p, color=colors[ch_idx], s=20, alpha=0.6,
+                                ax.scatter(t, p, color=colors[ch_idx], s=10, alpha=0.6,
                                          label=f'B{bank_label}-Ch{ch_idx}' if idx == bank_data.index[0] else '')
             
             # Configure axes
-            ax.set_xlabel('Time (seconds)', fontsize=11)
-            ax.set_ylabel('Optical Power (dBm)', fontsize=11)
-            ax.set_ylim(0, 16)
+            ax.set_xlabel('Time (seconds)', fontsize=9)
+            ax.set_ylabel('Optical Power (dBm)', fontsize=9)
+            ax.set_ylim(8, 13)
             
-            ax.set_title(f'Tile {tile_id} - Optical Power vs Time',
-                        fontsize=12, fontweight='bold')
-            
-            # Only show unique labels in legend
-            handles, labels = ax.get_legend_handles_labels()
-            by_label = dict(zip(labels, handles))
-            ax.legend(by_label.values(), by_label.keys(), loc='upper left', fontsize=7, ncol=8)
+            ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
+            ax.tick_params(labelsize=8)
             ax.grid(True, alpha=0.3)
-            
-            plt.tight_layout()
-            plot_filename = f'missionmode_power_tile{tile_id}_temptest.png'
-            plt.savefig(self.test2_path / plot_filename, dpi=300, bbox_inches='tight')
-            plt.close()
-            
-            print(f"  ✓ Tile {tile_id}: {plot_filename}")
         
-        print(f"\nCompleted power plots for {len(tile_ids)} tiles\n")
+        # Hide unused subplots
+        for plot_idx in range(len(tile_ids), 16):
+            axes[plot_idx].axis('off')
+        
+        plt.suptitle('Optical Power vs Time - All Tiles', fontsize=14, fontweight='bold', y=0.995)
+        plt.tight_layout()
+        
+        plot_filename = 'missionmode_power_all_tiles.png'
+        plt.savefig(self.test2_path / plot_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ Combined plot saved: {plot_filename}")
+        print(f"  Plotted {len(tile_ids)} tiles in 4x4 grid\n")
     
     def plot_temperature_profile(self):
         """Plot temperature vs time."""
@@ -4081,7 +4086,7 @@ class temperature_aggressors_2:
         print()
     
     def plot_missionmode_freqerror(self):
-        """Plot frequency error vs time for all tiles."""
+        """Plot frequency error vs time for all tiles in a 4x4 grid."""
         print("Plotting mission mode frequency error for all tiles...")
         
         # Load data
@@ -4099,8 +4104,16 @@ class temperature_aggressors_2:
         colors_a = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
         colors_b = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
         
-        # Plot each tile
-        for tile_id in tile_ids:
+        # Create figure with 4x4 subplots
+        fig, axes = plt.subplots(4, 4, figsize=(24, 24))
+        axes = axes.flatten()
+        
+        # Plot each tile in a separate subplot
+        for plot_idx, tile_id in enumerate(tile_ids):
+            if plot_idx >= 16:  # Only plot up to 16 tiles
+                break
+                
+            ax = axes[plot_idx]
             tile_data = wavemeter_df[wavemeter_df['tile_id'] == tile_id]
             
             # Load reference wavelengths (using first cycle as reference)
@@ -4112,9 +4125,6 @@ class temperature_aggressors_2:
                 if len(wavelengths) > 1:
                     wavelengths = wavelengths[1:]  # Skip first element
                     ref_wavelengths[bank_type] = wavelengths
-            
-            # Create figure with single subplot for both banks
-            fig, ax = plt.subplots(1, 1, figsize=(16, 6))
             
             # Plot both banks
             for bank_type in ['BANK_A', 'BANK_B']:
@@ -4146,35 +4156,35 @@ class temperature_aggressors_2:
                         # Plot each channel
                         for ch_idx, (t, f) in enumerate(zip(time_array, freq_error_ghz)):
                             if ch_idx < 8:  # Only 8 channels
-                                ax.scatter(t, f, color=colors[ch_idx], s=20, alpha=0.6,
+                                ax.scatter(t, f, color=colors[ch_idx], s=10, alpha=0.6,
                                          label=f'B{bank_label}-Ch{ch_idx}' if idx == bank_data.index[0] else '')
             
             # Configure axes
-            ax.set_xlabel('Time (seconds)', fontsize=11)
-            ax.set_ylabel('Frequency Error (GHz)', fontsize=11)
+            ax.set_xlabel('Time (seconds)', fontsize=9)
+            ax.set_ylabel('Frequency Error (GHz)', fontsize=9)
             
             # Add spec limits (±20 GHz)
             ax.axhline(y=20, color='red', linestyle=':', linewidth=1.5, alpha=0.5)
             ax.axhline(y=-20, color='red', linestyle=':', linewidth=1.5, alpha=0.5)
             ax.axhspan(-20, 20, color='green', alpha=0.05)
             
-            ax.set_title(f'Tile {tile_id} - Frequency Error vs Time',
-                        fontsize=12, fontweight='bold')
-            
-            # Only show unique labels in legend
-            handles, labels = ax.get_legend_handles_labels()
-            by_label = dict(zip(labels, handles))
-            ax.legend(by_label.values(), by_label.keys(), loc='upper left', fontsize=7, ncol=8)
+            ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
+            ax.tick_params(labelsize=8)
             ax.grid(True, alpha=0.3)
-            
-            plt.tight_layout()
-            plot_filename = f'missionmode_freqerror_tile{tile_id}_temptest.png'
-            plt.savefig(self.test2_path / plot_filename, dpi=300, bbox_inches='tight')
-            plt.close()
-            
-            print(f"  ✓ Tile {tile_id}: {plot_filename}")
         
-        print(f"\nCompleted frequency error plots for {len(tile_ids)} tiles\n")
+        # Hide unused subplots
+        for plot_idx in range(len(tile_ids), 16):
+            axes[plot_idx].axis('off')
+        
+        plt.suptitle('Frequency Error vs Time - All Tiles', fontsize=14, fontweight='bold', y=0.995)
+        plt.tight_layout()
+        
+        plot_filename = 'missionmode_freqerror_all_tiles.png'
+        plt.savefig(self.test2_path / plot_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ Combined plot saved: {plot_filename}")
+        print(f"  Plotted {len(tile_ids)} tiles in 4x4 grid\n")
     
     def plot_missionmode_operatingpoints(self):
         """Plot operating points vs time for all tiles."""
