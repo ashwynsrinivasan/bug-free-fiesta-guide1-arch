@@ -3911,7 +3911,7 @@ class temperature_aggressors_2:
         self.test2_path.mkdir(parents=True, exist_ok=True)
         
         # Data files
-        self.wavemeter_file = self.data_path / "optical_wavemeter_data_20251010_143800_part001.csv"
+        self.wavemeter_file = self.data_path / "optical_wavemeter_data_20251010_143800_part045.csv"
         self.temp_log_file = self.data_path / "temperature_log_20251009_One tile data with Temp Cycle.csv"
         
         print("=" * 80)
