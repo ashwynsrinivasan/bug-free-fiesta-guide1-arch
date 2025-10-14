@@ -4180,7 +4180,6 @@ class temperature_aggressors_2:
             # Configure axes
             ax.set_xlabel('Time (seconds)', fontsize=9)
             ax.set_ylabel('Frequency Error (GHz)', fontsize=9)
-            ax.set_ylim(-30, 30)
             
             # Add spec limits (±20 GHz)
             ax.axhline(y=20, color='red', linestyle=':', linewidth=1.5, alpha=0.5)
