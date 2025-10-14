@@ -3894,11 +3894,13 @@ class temperature_aggressors_2:
     """
     Temperature Aggressors Test 2 Analysis
     
-    This class provides additional temperature aggressors analysis.
+    Analyzes optical wavemeter data for multiple tiles during temperature cycling.
     """
     
     def __init__(self, base_path):
         """Initialize temperature aggressors test 2 analysis."""
+        import ast
+        
         self.base_path = Path(base_path)
         self.data_path = self.base_path / "temperature_aggressors"
         self.results_path = self.base_path / "analysis_results" / "temperature_aggressors"
@@ -3908,10 +3910,372 @@ class temperature_aggressors_2:
         self.results_path.mkdir(parents=True, exist_ok=True)
         self.test2_path.mkdir(parents=True, exist_ok=True)
         
+        # Data files
+        self.wavemeter_file = self.data_path / "optical_wavemeter_data_20251010_143800_part001.csv"
+        self.temp_log_file = self.data_path / "temperature_log_20251009_One tile data with Temp Cycle.csv"
+        
         print("=" * 80)
         print("Temperature Aggressors Test 2 - Analysis")
         print("=" * 80)
         print(f"Data path: {self.data_path}")
         print(f"Results path: {self.test2_path}")
         print()
+    
+    def load_wavemeter_data(self):
+        """Load and parse optical wavemeter CSV data."""
+        import ast
+        
+        if not self.wavemeter_file.exists():
+            print(f"Error: Wavemeter file not found: {self.wavemeter_file}")
+            return None
+        
+        print("Loading optical wavemeter data...")
+        df = pd.read_csv(self.wavemeter_file)
+        print(f"  Loaded {len(df)} rows of data")
+        
+        # Parse timestamp
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        
+        # Calculate elapsed time from first timestamp
+        ref_start = df['timestamp'].iloc[0]
+        df['time_seconds'] = (df['timestamp'] - ref_start).dt.total_seconds()
+        
+        # Parse array columns
+        for col in ['wavelength_nm', 'voa_dac_value', 'laser_dac_value', 
+                    'mux_mpd_value', 'pic_mpd_value']:
+            if col in df.columns:
+                df[col] = df[col].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else x)
+        
+        print(f"  Tiles: {sorted(df['tile_id'].unique())}")
+        print(f"  Cycles: {sorted(df['cycle_number'].unique())}")
+        print(f"  Time range: {df['time_seconds'].min():.0f} to {df['time_seconds'].max():.0f} seconds")
+        
+        return df
+    
+    def load_temperature_data(self):
+        """Load temperature log CSV data."""
+        if not self.temp_log_file.exists():
+            print(f"Error: Temperature log file not found: {self.temp_log_file}")
+            return None
+        
+        # Read CSV
+        df = pd.read_csv(self.temp_log_file)
+        df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+        
+        return df
+    
+    def align_with_temperature(self, wavemeter_df, temp_df):
+        """Align temperature data with wavemeter timestamps."""
+        # Use wavemeter reference time
+        ref_start = wavemeter_df['timestamp'].iloc[0]
+        temp_df['Time_seconds'] = (temp_df['Timestamp'] - ref_start).dt.total_seconds()
+        
+        return temp_df
+    
+    def plot_missionmode_power(self):
+        """Plot optical power vs time for all tiles."""
+        print("Plotting mission mode power for all tiles...")
+        
+        # Load data
+        wavemeter_df = self.load_wavemeter_data()
+        if wavemeter_df is None:
+            return
+        
+        # Get all unique tiles
+        tile_ids = sorted(wavemeter_df['tile_id'].unique())
+        
+        # Color maps
+        colors_a = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
+        colors_b = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
+        
+        # Plot each tile
+        for tile_id in tile_ids:
+            tile_data = wavemeter_df[wavemeter_df['tile_id'] == tile_id]
+            
+            # Create figure with single subplot for both banks
+            fig, ax = plt.subplots(1, 1, figsize=(16, 6))
+            
+            # Plot both banks
+            for bank_type in ['BANK_A', 'BANK_B']:
+                bank_data = tile_data[tile_data['bank_type'] == bank_type]
+                
+                for idx, row in bank_data.iterrows():
+                    time_sec = row['time_seconds']
+                    # Use pic_mpd_value (in µW) and convert to dBm
+                    power_uw = np.array(row['pic_mpd_value'])
+                    # Skip if first element (seems to be a placeholder)
+                    if len(power_uw) > 1:
+                        power_uw = power_uw[1:]  # Skip first element
+                        power_dbm = 10 * np.log10(power_uw / 1000.0)
+                        
+                        # Create time array for this measurement
+                        time_array = np.full(len(power_dbm), time_sec)
+                        
+                        colors = colors_a if bank_type == 'BANK_A' else colors_b
+                        bank_label = 'A' if bank_type == 'BANK_A' else 'B'
+                        
+                        # Plot each channel
+                        for ch_idx, (t, p) in enumerate(zip(time_array, power_dbm)):
+                            if ch_idx < 8:  # Only 8 channels
+                                ax.scatter(t, p, color=colors[ch_idx], s=20, alpha=0.6,
+                                         label=f'B{bank_label}-Ch{ch_idx}' if idx == bank_data.index[0] else '')
+            
+            # Configure axes
+            ax.set_xlabel('Time (seconds)', fontsize=11)
+            ax.set_ylabel('Optical Power (dBm)', fontsize=11)
+            ax.set_ylim(0, 16)
+            
+            ax.set_title(f'Tile {tile_id} - Optical Power vs Time',
+                        fontsize=12, fontweight='bold')
+            
+            # Only show unique labels in legend
+            handles, labels = ax.get_legend_handles_labels()
+            by_label = dict(zip(labels, handles))
+            ax.legend(by_label.values(), by_label.keys(), loc='upper left', fontsize=7, ncol=8)
+            ax.grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            plot_filename = f'missionmode_power_tile{tile_id}_temptest.png'
+            plt.savefig(self.test2_path / plot_filename, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            print(f"  ✓ Tile {tile_id}: {plot_filename}")
+        
+        print(f"\nCompleted power plots for {len(tile_ids)} tiles\n")
+    
+    def plot_temperature_profile(self):
+        """Plot temperature vs time."""
+        print("Plotting temperature profile...")
+        
+        # Load data
+        temp_df = self.load_temperature_data()
+        wavemeter_df = self.load_wavemeter_data()
+        if temp_df is None or wavemeter_df is None:
+            return
+        
+        # Align timestamps
+        temp_df = self.align_with_temperature(wavemeter_df, temp_df)
+        
+        # Create plot
+        fig, ax = plt.subplots(figsize=(14, 6))
+        
+        # Plot temperature vs time
+        ax.plot(temp_df['Time_seconds'], temp_df['Temperature_C'], 
+               linewidth=1.5, color='red', label='Temperature')
+        
+        ax.set_xlabel('Time (seconds)', fontsize=12)
+        ax.set_ylabel('Temperature (°C)', fontsize=12)
+        ax.set_title('Temperature Profile vs Time\nTemperature Cycling Test', 
+                    fontsize=14, fontweight='bold')
+        ax.legend(loc='best', fontsize=10)
+        ax.grid(True, alpha=0.3)
+        
+        # Save plot
+        plot_filename = 'temperature_profile.png'
+        plt.savefig(self.test2_path / plot_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ Plot saved: {plot_filename}")
+        print(f"  Temperature range: {temp_df['Temperature_C'].min():.2f}°C to {temp_df['Temperature_C'].max():.2f}°C")
+        print(f"  Total duration: {temp_df['Time_seconds'].max():.0f} seconds ({temp_df['Time_seconds'].max()/60:.1f} minutes)")
+        print()
+    
+    def plot_missionmode_freqerror(self):
+        """Plot frequency error vs time for all tiles."""
+        print("Plotting mission mode frequency error for all tiles...")
+        
+        # Load data
+        wavemeter_df = self.load_wavemeter_data()
+        if wavemeter_df is None:
+            return
+        
+        # Get all unique tiles
+        tile_ids = sorted(wavemeter_df['tile_id'].unique())
+        
+        # Speed of light constant
+        c_speed_light = 299792.458  # THz*nm
+        
+        # Color maps
+        colors_a = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
+        colors_b = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
+        
+        # Plot each tile
+        for tile_id in tile_ids:
+            tile_data = wavemeter_df[wavemeter_df['tile_id'] == tile_id]
+            
+            # Load reference wavelengths (using first cycle as reference)
+            ref_wavelengths = {}
+            cycle_0_data = tile_data[tile_data['cycle_number'] == 0]
+            for idx, row in cycle_0_data.iterrows():
+                bank_type = row['bank_type']
+                wavelengths = np.array(row['wavelength_nm'])
+                if len(wavelengths) > 1:
+                    wavelengths = wavelengths[1:]  # Skip first element
+                    ref_wavelengths[bank_type] = wavelengths
+            
+            # Create figure with single subplot for both banks
+            fig, ax = plt.subplots(1, 1, figsize=(16, 6))
+            
+            # Plot both banks
+            for bank_type in ['BANK_A', 'BANK_B']:
+                bank_data = tile_data[tile_data['bank_type'] == bank_type]
+                
+                if bank_type not in ref_wavelengths:
+                    continue
+                
+                ref_wl = ref_wavelengths[bank_type]
+                
+                for idx, row in bank_data.iterrows():
+                    time_sec = row['time_seconds']
+                    wavelengths = np.array(row['wavelength_nm'])
+                    
+                    if len(wavelengths) > 1:
+                        wavelengths = wavelengths[1:]  # Skip first element
+                        
+                        # Calculate frequency error in GHz
+                        measured_freq_thz = c_speed_light / wavelengths
+                        ref_freq_thz = c_speed_light / ref_wl
+                        freq_error_ghz = (measured_freq_thz - ref_freq_thz) * 1000
+                        
+                        # Create time array for this measurement
+                        time_array = np.full(len(freq_error_ghz), time_sec)
+                        
+                        colors = colors_a if bank_type == 'BANK_A' else colors_b
+                        bank_label = 'A' if bank_type == 'BANK_A' else 'B'
+                        
+                        # Plot each channel
+                        for ch_idx, (t, f) in enumerate(zip(time_array, freq_error_ghz)):
+                            if ch_idx < 8:  # Only 8 channels
+                                ax.scatter(t, f, color=colors[ch_idx], s=20, alpha=0.6,
+                                         label=f'B{bank_label}-Ch{ch_idx}' if idx == bank_data.index[0] else '')
+            
+            # Configure axes
+            ax.set_xlabel('Time (seconds)', fontsize=11)
+            ax.set_ylabel('Frequency Error (GHz)', fontsize=11)
+            
+            # Add spec limits (±20 GHz)
+            ax.axhline(y=20, color='red', linestyle=':', linewidth=1.5, alpha=0.5)
+            ax.axhline(y=-20, color='red', linestyle=':', linewidth=1.5, alpha=0.5)
+            ax.axhspan(-20, 20, color='green', alpha=0.05)
+            
+            ax.set_title(f'Tile {tile_id} - Frequency Error vs Time',
+                        fontsize=12, fontweight='bold')
+            
+            # Only show unique labels in legend
+            handles, labels = ax.get_legend_handles_labels()
+            by_label = dict(zip(labels, handles))
+            ax.legend(by_label.values(), by_label.keys(), loc='upper left', fontsize=7, ncol=8)
+            ax.grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            plot_filename = f'missionmode_freqerror_tile{tile_id}_temptest.png'
+            plt.savefig(self.test2_path / plot_filename, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            print(f"  ✓ Tile {tile_id}: {plot_filename}")
+        
+        print(f"\nCompleted frequency error plots for {len(tile_ids)} tiles\n")
+    
+    def plot_missionmode_operatingpoints(self):
+        """Plot operating points vs time for all tiles."""
+        print("Plotting mission mode operating points for all tiles...")
+        
+        # Load data
+        wavemeter_df = self.load_wavemeter_data()
+        if wavemeter_df is None:
+            return
+        
+        # Get all unique tiles
+        tile_ids = sorted(wavemeter_df['tile_id'].unique())
+        
+        # Create figure with 5 subplots (one for each operating point)
+        params = [
+            ('laser_dac_value', 'Laser DAC'),
+            ('voa_dac_value', 'VOA DAC'),
+            ('temp_pic_C', 'TPIC (°C)'),
+            ('temp_mux_C', 'TMUX (°C)'),
+            ('temp_pmic_C', 'TPMIC (°C)')
+        ]
+        
+        # Color maps
+        colors_a = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
+        colors_b = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
+        
+        # Plot each tile
+        for tile_id in tile_ids:
+            tile_data = wavemeter_df[wavemeter_df['tile_id'] == tile_id]
+            
+            fig, axes = plt.subplots(5, 1, figsize=(16, 18))
+            
+            for param_idx, (param_col, param_label) in enumerate(params):
+                ax = axes[param_idx]
+                
+                # Plot both banks
+                for bank_type in ['BANK_A', 'BANK_B']:
+                    bank_data = tile_data[tile_data['bank_type'] == bank_type]
+                    
+                    for idx, row in bank_data.iterrows():
+                        time_sec = row['time_seconds']
+                        
+                        # Handle scalar vs array parameters
+                        if param_col.startswith('temp_'):
+                            # Temperature sensors are scalar values
+                            param_value = row[param_col]
+                            colors = colors_a if bank_type == 'BANK_A' else colors_b
+                            bank_label = 'A' if bank_type == 'BANK_A' else 'B'
+                            ax.scatter(time_sec, param_value, color=colors[0], s=20, alpha=0.6,
+                                     label=f'B{bank_label}' if idx == bank_data.index[0] else '')
+                        else:
+                            # DAC values are arrays
+                            param_values = np.array(row[param_col])
+                            if len(param_values) > 1:
+                                param_values = param_values[1:]  # Skip first element
+                                
+                                time_array = np.full(len(param_values), time_sec)
+                                colors = colors_a if bank_type == 'BANK_A' else colors_b
+                                bank_label = 'A' if bank_type == 'BANK_A' else 'B'
+                                
+                                for ch_idx, (t, p) in enumerate(zip(time_array, param_values)):
+                                    if ch_idx < 8:
+                                        ax.scatter(t, p, color=colors[ch_idx], s=20, alpha=0.6,
+                                                 label=f'B{bank_label}-Ch{ch_idx}' if idx == bank_data.index[0] else '')
+                
+                # Configure axes
+                ax.set_xlabel('Time (seconds)', fontsize=11)
+                ax.set_ylabel(param_label, fontsize=11)
+                
+                ax.set_title(f'Tile {tile_id} - {param_label} vs Time',
+                            fontsize=12, fontweight='bold')
+                
+                # Legend only for first subplot to avoid cluttering
+                if param_idx == 0:
+                    handles, labels = ax.get_legend_handles_labels()
+                    by_label = dict(zip(labels, handles))
+                    ax.legend(by_label.values(), by_label.keys(), loc='upper left', fontsize=7, ncol=8)
+                
+                ax.grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            plot_filename = f'missionmode_operatingpoints_tile{tile_id}_temptest.png'
+            plt.savefig(self.test2_path / plot_filename, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            print(f"  ✓ Tile {tile_id}: {plot_filename}")
+        
+        print(f"\nCompleted operating points plots for {len(tile_ids)} tiles\n")
+    
+    def run_all_plots(self):
+        """Generate all mission mode plots."""
+        print("\n" + "=" * 80)
+        print("GENERATING ALL MISSION MODE PLOTS - TEST 2")
+        print("=" * 80 + "\n")
+        
+        self.plot_missionmode_power()
+        self.plot_missionmode_freqerror()
+        self.plot_missionmode_operatingpoints()
+        
+        print("=" * 80)
+        print("All plots completed!")
+        print(f"Results saved to: {self.test2_path}")
+        print("=" * 80)
     
