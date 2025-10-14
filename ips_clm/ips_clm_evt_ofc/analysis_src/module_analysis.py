@@ -262,11 +262,348 @@ class module_analysis:
         # Create summary plot
         if summary_data:
             self.create_mission_mode_summary(summary_data)
+            self.create_mission_mode_statistical_summary(summary_data)
         
         print("\n" + "=" * 80)
         print("Mission Mode analysis completed!")
         print(f"Results saved to: analysis_results/mission_mode/")
         print("=" * 80)
+    
+    def mission_mode_alabama(self, modules=None):
+        """
+        Generate Alabama plots where Kenya uses Endeavour's frequency requirements.
+        """
+        if modules is None:
+            modules = self.modules
+        
+        print("\n" + "=" * 80)
+        print("Mission Mode - Alabama Analysis (Kenya with Endeavour Freq Specs)")
+        print("=" * 80)
+        
+        # Create alabama_plots folder
+        alabama_path = self.mission_mode_path / 'alabama_plots'
+        alabama_path.mkdir(exist_ok=True)
+        
+        # Save original specs
+        original_endeavour_spec = None
+        original_kenya_spec = None
+        
+        if self.specifications:
+            # Save and update Endeavour spec
+            if 'endeavour' in self.specifications:
+                original_endeavour_spec = self.specifications['endeavour'].copy()
+                self.specifications['endeavour']['wavelength_error'] = {
+                    'value': 20.0,
+                    'unit': 'GHz'
+                }
+                print("  ✓ Applied Alabama frequency requirements to Endeavour: ±20 GHz")
+            
+            # Save and update Kenya spec
+            if 'kenya' in self.specifications:
+                original_kenya_spec = self.specifications['kenya'].copy()
+                self.specifications['kenya']['wavelength_error'] = {
+                    'value': 20.0,
+                    'unit': 'GHz'
+                }
+                print("  ✓ Applied Alabama frequency requirements to Kenya: ±20 GHz")
+        
+        # Temporarily change mission_mode_path to alabama_plots
+        original_path = self.mission_mode_path
+        self.mission_mode_path = alabama_path
+        
+        for module in modules:
+            try:
+                # Get full serial number
+                module_path = self.base_path / module
+                config_files = list(module_path.glob("*config*.yaml"))
+                full_sn = module  # fallback
+                if config_files:
+                    config_name = config_files[0].name
+                    parts = config_name.split('_')
+                    if len(parts) >= 3:
+                        full_sn = parts[2]
+                
+                # Load wavemeter data
+                endeavour_data = self._load_wavemeter_data(module_path, 'Endeavour')
+                kenya_data = self._load_wavemeter_data(module_path, 'Kenya')
+                
+                if endeavour_data is not None or kenya_data is not None:
+                    # Generate power plot
+                    self._plot_mission_mode_power(endeavour_data, kenya_data, full_sn)
+                    
+                    # Generate frequency error plot
+                    if self.reference_grid:
+                        self._plot_mission_mode_frequency_error(endeavour_data, kenya_data, full_sn)
+                    
+                    # Generate combined Alabama plot
+                    if self.reference_grid:
+                        self._plot_alabama_combined(endeavour_data, kenya_data, full_sn)
+                    
+            except Exception as e:
+                print(f"\n✗ Error analyzing module {module} Alabama mode: {e}")
+        
+        # Restore original paths and specs
+        self.mission_mode_path = original_path
+        if self.specifications:
+            if original_endeavour_spec:
+                self.specifications['endeavour'] = original_endeavour_spec
+            if original_kenya_spec:
+                self.specifications['kenya'] = original_kenya_spec
+        
+        print("\n" + "=" * 80)
+        print("Alabama analysis completed!")
+        print(f"Results saved to: analysis_results/mission_mode/alabama_plots/")
+        print("=" * 80)
+    
+    def _plot_alabama_combined(self, endeavour_data, kenya_data, full_sn):
+        """Create combined Alabama plot with power vs time and frequency error violin plots"""
+        print(f"  Generating combined Alabama plot for {full_sn}...")
+        
+        # Create figure with custom layout
+        # Power plot: 1:1.75 aspect ratio (height:width)
+        # Freq plots: 1.75:1 aspect ratio (height:width)
+        fig = plt.figure(figsize=(12.5, 7.5))
+        gs = fig.add_gridspec(1, 3, width_ratios=[3, 1, 1], hspace=0.3, wspace=0.3)
+        axes = [fig.add_subplot(gs[0, 0]), fig.add_subplot(gs[0, 1]), fig.add_subplot(gs[0, 2])]
+        
+        # Subplot 1: Power vs Time for both Endeavour and Kenya
+        ax = axes[0]
+        
+        # Color maps for channels
+        colors_b0 = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
+        colors_b1 = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
+        
+        # Plot Endeavour power data
+        if endeavour_data is not None:
+            power_col = None
+            for col in endeavour_data.columns:
+                if 'mpd_pic' in col.lower():
+                    power_col = col
+                    break
+            
+            if power_col:
+                for idx, row in endeavour_data.iterrows():
+                    if pd.isna(row['bank']) or pd.isna(row['channel']) or pd.isna(row[power_col]):
+                        continue
+                    
+                    bank = int(row['bank'])
+                    channel = int(row['channel'])
+                    
+                    power_values_uw = row[power_col]
+                    if isinstance(power_values_uw, str):
+                        power_values_uw = [float(x.strip()) for x in power_values_uw.strip('[]').split(',') if x.strip()]
+                    elif not isinstance(power_values_uw, list):
+                        power_values_uw = [power_values_uw]
+                    
+                    if power_values_uw:
+                        power_dbm = [10 * np.log10(p / 1000.0) for p in power_values_uw]
+                        x_values = np.arange(len(power_dbm))
+                        
+                        if bank == 0:
+                            ax.plot(x_values, power_dbm, '-', label=f'B0-Ch{channel}', 
+                                   linewidth=1.5, color=colors_b0[channel])
+                        else:
+                            ax.plot(x_values, power_dbm, '-', label=f'B1-Ch{channel}', 
+                                   linewidth=1.5, color=colors_b1[channel])
+        
+        # Plot Kenya power data (with different line style to distinguish)
+        if kenya_data is not None:
+            power_col = None
+            for col in kenya_data.columns:
+                if 'mpd_pic' in col.lower():
+                    power_col = col
+                    break
+            
+            if power_col:
+                for idx, row in kenya_data.iterrows():
+                    if pd.isna(row['bank']) or pd.isna(row['channel']) or pd.isna(row[power_col]):
+                        continue
+                    
+                    bank = int(row['bank'])
+                    channel = int(row['channel'])
+                    
+                    power_values_uw = row[power_col]
+                    if isinstance(power_values_uw, str):
+                        power_values_uw = [float(x.strip()) for x in power_values_uw.strip('[]').split(',') if x.strip()]
+                    elif not isinstance(power_values_uw, list):
+                        power_values_uw = [power_values_uw]
+                    
+                    if power_values_uw:
+                        power_dbm = [10 * np.log10(p / 1000.0) for p in power_values_uw]
+                        x_values = np.arange(len(power_dbm))
+                        
+                        # Use solid line for Kenya (Power Mode-2)
+                        if bank == 0:
+                            ax.plot(x_values, power_dbm, '-', linewidth=1.5, color=colors_b0[channel])
+                        else:
+                            ax.plot(x_values, power_dbm, '-', linewidth=1.5, color=colors_b1[channel])
+        
+        # Add specification limits
+        # Power Mode-1: 10 to 12.3 dBm
+        # Power Mode-2: 6.3 to 8.6 dBm
+        ax.axhline(y=10, color='red', linestyle='--', linewidth=2, alpha=0.7, label='Power Mode - 1 Min Spec: 10 dBm')
+        ax.axhline(y=12.3, color='red', linestyle='--', linewidth=2, alpha=0.7, label='Power Mode - 1 Max Spec: 12.3 dBm')
+        ax.axhspan(10, 12.3, color='green', alpha=0.1)
+        
+        # Add annotation for Power Mode-1 on top of max spec line
+        ax.text(1500, 12.5, 'Power Mode - 1', fontsize=10, ha='center', 
+               color='blue', fontweight='bold', bbox=dict(boxstyle='round,pad=0.3', 
+               facecolor='white', edgecolor='blue', alpha=0.8))
+        
+        ax.axhline(y=6.3, color='red', linestyle='--', linewidth=2, alpha=0.7, label='Power Mode - 2 Min Spec: 6.3 dBm')
+        ax.axhline(y=8.6, color='red', linestyle='--', linewidth=2, alpha=0.7, label='Power Mode - 2 Max Spec: 8.6 dBm')
+        ax.axhspan(6.3, 8.6, color='green', alpha=0.1)
+        
+        # Add annotation for Power Mode-2 on top of max spec line
+        ax.text(1500, 8.8, 'Power Mode - 2', fontsize=10, ha='center', 
+               color='orange', fontweight='bold', bbox=dict(boxstyle='round,pad=0.3', 
+               facecolor='white', edgecolor='orange', alpha=0.8))
+        
+        ax.set_xlabel('Time (seconds)', fontsize=10)
+        ax.set_ylabel('Optical Power (dBm)', fontsize=10)
+        ax.set_xlim(0, 3000)
+        ax.set_ylim(0, 14)
+        ax.grid(True, alpha=0.3)
+        
+        # Subplot 2: Power Mode-1 Frequency Error Box Plot
+        ax = axes[1]
+        self._plot_freq_violin_alabama(ax, endeavour_data, 'Power Mode - 1')
+        
+        # Subplot 3: Power Mode-2 Frequency Error Box Plot
+        ax = axes[2]
+        self._plot_freq_violin_alabama(ax, kenya_data, 'Power Mode - 2')
+        
+        fig.tight_layout()
+        plot_filename = f'missionmode_alabama_{full_sn}.png'
+        plt.savefig(self.mission_mode_path / plot_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ Combined Alabama plot saved: {plot_filename}")
+    
+    def _plot_freq_violin_alabama(self, ax, data, title):
+        """Plot frequency error as box plot with scatter overlay for Alabama combined view"""
+        if data is None:
+            ax.text(0.5, 0.5, 'No Data', ha='center', va='center', fontsize=12)
+            ax.set_title(title, fontsize=10, fontweight='bold')
+            return
+        
+        # Speed of light constant
+        c_speed_light = 299792.458
+        
+        # Color maps
+        colors_b0 = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
+        colors_b1 = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
+        
+        # Collect frequency error data
+        freq_error_data = {}
+        
+        wl_col = None
+        for col in data.columns:
+            if col.lower() == 'wavelength':
+                wl_col = col
+                break
+        
+        if wl_col:
+            for idx, row in data.iterrows():
+                if pd.isna(row['bank']) or pd.isna(row['channel']) or pd.isna(row[wl_col]):
+                    continue
+                
+                bank = int(row['bank'])
+                channel = int(row['channel'])
+                set_name = 'set_a' if bank == 0 else 'set_b'
+                
+                wavelength_values_nm = row[wl_col]
+                if isinstance(wavelength_values_nm, str):
+                    wavelength_values_nm = [float(x.strip()) for x in wavelength_values_nm.strip('[]').split(',') if x.strip()]
+                elif not isinstance(wavelength_values_nm, list):
+                    wavelength_values_nm = [wavelength_values_nm]
+                
+                if wavelength_values_nm and self.reference_grid:
+                    grid_num = channel + 1
+                    grid_key = f'grid_{grid_num}'
+                    
+                    if set_name in self.reference_grid and grid_key in self.reference_grid[set_name]:
+                        ref_freq_thz = self.reference_grid[set_name][grid_key]['frequency_thz']
+                        
+                        freq_errors = []
+                        for wl in wavelength_values_nm:
+                            measured_freq_thz = c_speed_light / wl
+                            freq_error_ghz = (measured_freq_thz - ref_freq_thz) * 1000
+                            freq_errors.append(freq_error_ghz)
+                        
+                        # Filter outliers
+                        freq_errors_array = np.array(freq_errors)
+                        q1 = np.percentile(freq_errors_array, 25)
+                        q3 = np.percentile(freq_errors_array, 75)
+                        iqr = q3 - q1
+                        lower_bound = q1 - 3 * iqr
+                        upper_bound = q3 + 3 * iqr
+                        valid_freq_errors = freq_errors_array[(freq_errors_array >= lower_bound) & (freq_errors_array <= upper_bound)]
+                        
+                        if len(valid_freq_errors) > 0:
+                            freq_error_data[(bank, channel)] = valid_freq_errors.tolist()
+        
+        if freq_error_data:
+            # Prepare data for box plot
+            positions = []
+            data_list = []
+            colors_list = []
+            labels_list = []
+            
+            # Sort by bank and channel (reverse order for bottom-to-top display)
+            sorted_keys = sorted(freq_error_data.keys(), reverse=True)
+            
+            for i, (bank, channel) in enumerate(sorted_keys):
+                positions.append(i)
+                data_list.append(freq_error_data[(bank, channel)])
+                
+                if bank == 0:
+                    colors_list.append(colors_b0[channel])
+                    labels_list.append(f'B0-Ch{channel}')
+                else:
+                    colors_list.append(colors_b1[channel])
+                    labels_list.append(f'B1-Ch{channel}')
+            
+            # Create box plot (horizontal orientation)
+            bp = ax.boxplot(data_list, positions=positions, vert=False, widths=0.6,
+                            patch_artist=True, showfliers=False,
+                            boxprops=dict(linewidth=1.5),
+                            medianprops=dict(color='black', linewidth=2),
+                            whiskerprops=dict(linewidth=1.5),
+                            capprops=dict(linewidth=1.5))
+            
+            # Color each box
+            for patch, color in zip(bp['boxes'], colors_list):
+                patch.set_facecolor(color)
+                patch.set_alpha(0.7)
+            
+            # Overlay scatter points for all data
+            for i, data in enumerate(data_list):
+                # Add jitter to y-position for better visibility
+                y_positions = np.random.normal(positions[i], 0.08, size=len(data))
+                ax.scatter(data, y_positions, alpha=0.4, s=20, color=colors_list[i], marker='o')
+            
+            # Add specification limit (±20 GHz for Alabama)
+            ax.axvline(x=20, color='red', linestyle='--', linewidth=2, alpha=0.7, label='±20 GHz')
+            ax.axvline(x=-20, color='red', linestyle='--', linewidth=2, alpha=0.7)
+            ax.axvspan(-20, 20, color='green', alpha=0.1, label='Spec Range')
+            
+            # Add zero line
+            ax.axvline(x=0, color='k', linestyle='-', linewidth=0.5)
+            
+            ax.set_yticks(positions)
+            ax.set_yticklabels(labels_list)
+            ax.set_xlabel('Frequency Error (GHz)', fontsize=10)
+            ax.set_ylabel('Bank-Channel', fontsize=10)
+            
+            # Add dashed line between B0 and B1
+            if len(positions) > 8:
+                ax.axhline(y=7.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+            
+            ax.set_xlim(-40, 40)
+        
+        ax.set_title(title, fontsize=10, fontweight='bold')
+        ax.grid(True, alpha=0.3, axis='x')
     
     def analyze_module_power(self, module_sn='165'):
         """
@@ -1126,21 +1463,32 @@ class module_analysis:
         """Plot mission mode power from MPD_PIC columns"""
         print(f"  Generating mission mode power plot...")
         
-        fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+        # Create figure with equal subplot widths
+        # Both time series and distribution: 1.5:1 aspect ratio (height:width)
+        fig = plt.figure(figsize=(16, 24))
+        gs = fig.add_gridspec(2, 2, width_ratios=[1, 1], hspace=0.3, wspace=0.3)
+        axes = np.array([[fig.add_subplot(gs[0, 0]), fig.add_subplot(gs[0, 1])],
+                        [fig.add_subplot(gs[1, 0]), fig.add_subplot(gs[1, 1])]])
         
-        # Plot Endeavour
+        # Plot Endeavour - time series and distribution
         if endeavour_data is not None:
-            self._plot_power_spec(axes[0], endeavour_data, 'Endeavour', full_sn)
+            power_data = self._plot_power_spec(axes[0, 0], endeavour_data, 'Endeavour', full_sn)
+            self._plot_power_distribution(axes[0, 1], power_data, 'Endeavour', full_sn)
         else:
-            axes[0].text(0.5, 0.5, 'No Endeavour Data', ha='center', va='center', fontsize=14)
-            axes[0].set_title(f'Endeavour - Module {full_sn}')
+            axes[0, 0].text(0.5, 0.5, 'No Endeavour Data', ha='center', va='center', fontsize=14)
+            axes[0, 0].set_title(f'Endeavour - Module {full_sn}')
+            axes[0, 1].text(0.5, 0.5, 'No Endeavour Data', ha='center', va='center', fontsize=14)
+            axes[0, 1].set_title(f'Endeavour Distribution - Module {full_sn}')
         
-        # Plot Kenya
+        # Plot Kenya - time series and distribution
         if kenya_data is not None:
-            self._plot_power_spec(axes[1], kenya_data, 'Kenya', full_sn)
+            power_data = self._plot_power_spec(axes[1, 0], kenya_data, 'Kenya', full_sn)
+            self._plot_power_distribution(axes[1, 1], power_data, 'Kenya', full_sn)
         else:
-            axes[1].text(0.5, 0.5, 'No Kenya Data', ha='center', va='center', fontsize=14)
-            axes[1].set_title(f'Kenya - Module {full_sn}')
+            axes[1, 0].text(0.5, 0.5, 'No Kenya Data', ha='center', va='center', fontsize=14)
+            axes[1, 0].set_title(f'Kenya - Module {full_sn}')
+            axes[1, 1].text(0.5, 0.5, 'No Kenya Data', ha='center', va='center', fontsize=14)
+            axes[1, 1].set_title(f'Kenya Distribution - Module {full_sn}')
         
         plt.tight_layout()
         plot_filename = f'missionmode_power_{full_sn}.png'
@@ -1150,7 +1498,9 @@ class module_analysis:
         print(f"  ✓ Plot saved: {plot_filename}")
     
     def _plot_power_spec(self, ax, df, spec_name, full_sn):
-        """Plot power for one specification from mpd_pic column"""
+        """Plot power for one specification from mpd_pic column
+        Returns: dict with {(bank, channel): [power_dbm_values]} for distribution plotting
+        """
         # Find mpd_pic column
         power_col = None
         for col in df.columns:
@@ -1160,11 +1510,14 @@ class module_analysis:
         
         if power_col is None:
             ax.text(0.5, 0.5, 'No mpd_pic data found', ha='center', va='center', fontsize=12)
-            return
+            return {}
         
         # Color maps for channels
         colors_b0 = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
         colors_b1 = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
+        
+        # Store power data for distribution plot
+        power_data = {}
         
         # Plot each bank and channel combination
         for idx, row in df.iterrows():
@@ -1189,6 +1542,9 @@ class module_analysis:
             
             # Convert to dBm for each datapoint
             power_dbm = [10 * np.log10(p / 1000.0) for p in power_values_uw]
+            
+            # Store for distribution
+            power_data[(bank, channel)] = power_dbm
             
             # Create x-axis as datapoint index
             x_values = np.arange(len(power_dbm))
@@ -1229,10 +1585,145 @@ class module_analysis:
         ax.set_xlabel('Seconds')
         ax.set_ylabel('Optical Power (dBm)')
         ax.set_title(f'{spec_name} - Tile SN: {full_sn} - Mission Mode Power')
-        ax.set_ylim(0, 20)
-        ax.set_yticks(np.arange(0, 21, 1))
+        
+        # Set x-axis limits
+        ax.set_xlim(0, 3000)
+        
+        # Set y-axis limits based on specification
+        if spec_name == 'Endeavour':
+            ax.set_ylim(9, 14)
+            ax.set_yticks(np.arange(9, 14.5, 0.5))
+        else:  # Kenya
+            ax.set_ylim(5, 10)
+            ax.set_yticks(np.arange(5, 10.5, 0.5))
+        
         ax.legend(loc='best', fontsize=7, ncol=2)
         ax.grid(True, alpha=0.3)
+        
+        return power_data
+    
+    def _plot_power_distribution(self, ax, power_data, spec_name, full_sn):
+        """Plot statistical distribution of power for each channel"""
+        if not power_data:
+            ax.text(0.5, 0.5, 'No power data', ha='center', va='center', fontsize=12)
+            return
+        
+        # Color maps for channels
+        colors_b0 = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
+        colors_b1 = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
+        
+        # Prepare data for box plot
+        positions = []
+        data_list = []
+        colors_list = []
+        labels_list = []
+        
+        # Sort by bank and channel (reverse order for bottom-to-top display)
+        sorted_keys = sorted(power_data.keys(), reverse=True)
+        
+        for i, (bank, channel) in enumerate(sorted_keys):
+            positions.append(i)
+            data_list.append(power_data[(bank, channel)])
+            
+            if bank == 0:
+                colors_list.append(colors_b0[channel])
+                labels_list.append(f'B0-Ch{channel}')
+            else:
+                colors_list.append(colors_b1[channel])
+                labels_list.append(f'B1-Ch{channel}')
+        
+        # Create box plot (horizontal orientation)
+        bp = ax.boxplot(data_list, positions=positions, vert=False, widths=0.6,
+                        patch_artist=True, showfliers=False,
+                        boxprops=dict(linewidth=1.5),
+                        medianprops=dict(color='black', linewidth=2),
+                        whiskerprops=dict(linewidth=1.5),
+                        capprops=dict(linewidth=1.5))
+        
+        # Color each box
+        for patch, color in zip(bp['boxes'], colors_list):
+            patch.set_facecolor(color)
+            patch.set_alpha(0.7)
+        
+        # Overlay scatter points for all data
+        for i, data in enumerate(data_list):
+            # Add jitter to y-position for better visibility
+            y_positions = np.random.normal(positions[i], 0.08, size=len(data))
+            ax.scatter(data, y_positions, alpha=0.4, s=20, color=colors_list[i], marker='o')
+        
+        # Add median and sigma annotations to the right of each box
+        ax_xlim = ax.get_xlim()
+        annotation_x_offset = 0.75  # Position as fraction of plot width
+        
+        for i, data in enumerate(data_list):
+            median_val = np.median(data)
+            sigma_val = np.std(data)
+            
+            # Position annotation to the right
+            y_pos = positions[i]
+            
+            # Add text annotation with box
+            annotation_text = f'μ̃={median_val:.2f}dBm\nσ={sigma_val:.2f}dB'
+            ax.text(annotation_x_offset, y_pos, annotation_text, 
+                   fontsize=8, ha='left', va='center',
+                   transform=ax.get_yaxis_transform(),
+                   bbox=dict(boxstyle='round,pad=0.4', facecolor='white', 
+                            edgecolor=colors_list[i], linewidth=1.5, alpha=0.9))
+        
+        # Add specification limits if available
+        if self.specifications:
+            spec_key = spec_name.lower()
+            if spec_key in self.specifications:
+                spec = self.specifications[spec_key]
+                
+                if 'min_power_per_wavelength' in spec:
+                    min_power = spec['min_power_per_wavelength']['value']
+                    ax.axvline(x=min_power, color='red', linestyle='--', linewidth=2, 
+                              label=f'Min Spec: {min_power} dBm', alpha=0.7)
+                
+                if 'max_power_per_wavelength' in spec:
+                    max_power = spec['max_power_per_wavelength']['value']
+                    ax.axvline(x=max_power, color='red', linestyle='--', linewidth=2, 
+                              label=f'Max Spec: {max_power} dBm', alpha=0.7)
+                
+                # Add shaded region for specification range
+                if 'min_power_per_wavelength' in spec and 'max_power_per_wavelength' in spec:
+                    ax.axvspan(min_power, max_power, 
+                              color='green', alpha=0.1, label='Spec Range')
+        
+        ax.set_yticks(positions)
+        ax.set_yticklabels(labels_list)
+        ax.set_xlabel('Optical Power (dBm)')
+        ax.set_ylabel('Bank-Channel')
+        
+        # Add dashed line between B0 and B1
+        if len(positions) > 8:
+            ax.axhline(y=7.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        
+        # Set x-axis limits based on specification
+        if spec_name == 'Endeavour':
+            ax.set_xlim(9, 14)
+            ax.set_xticks(np.arange(9, 14.5, 0.5))
+        else:  # Kenya
+            ax.set_xlim(5, 10)
+            ax.set_xticks(np.arange(5, 10.5, 0.5))
+        
+        # Calculate overall statistics
+        all_data = [val for data in data_list for val in data]
+        overall_median = np.median(all_data)
+        overall_sigma = np.std(all_data)
+        
+        # Extract number of tiles from the full_sn parameter
+        if 'Modules' in full_sn:
+            n_tiles_text = full_sn  # Already formatted as "N Modules"
+        else:
+            n_tiles_text = f'Tile SN: {full_sn}'
+        
+        ax.set_title(f'Statistical Distribution\nμ̃={overall_median:.2f}dBm, σ={overall_sigma:.2f}dB, {n_tiles_text}', 
+                    fontsize=12, fontweight='bold')
+        ax.grid(True, alpha=0.3, axis='x')
+        if self.specifications:
+            ax.legend(loc='best', fontsize=8)
     
     def _plot_mission_mode_frequency_error(self, endeavour_data, kenya_data, full_sn):
         """Plot frequency error compared to reference grid"""
@@ -1242,21 +1733,32 @@ class module_analysis:
             print(f"  Warning: No reference grid available, skipping frequency error analysis")
             return
         
-        fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+        # Create figure with equal subplot widths
+        # Both time series and distribution: 1.5:1 aspect ratio (height:width)
+        fig = plt.figure(figsize=(16, 24))
+        gs = fig.add_gridspec(2, 2, width_ratios=[1, 1], hspace=0.3, wspace=0.3)
+        axes = np.array([[fig.add_subplot(gs[0, 0]), fig.add_subplot(gs[0, 1])],
+                        [fig.add_subplot(gs[1, 0]), fig.add_subplot(gs[1, 1])]])
         
-        # Plot Endeavour (Bank 0 uses set_a, Bank 1 uses set_b)
+        # Plot Endeavour - time series and distribution (Bank 0 uses set_a, Bank 1 uses set_b)
         if endeavour_data is not None:
-            self._plot_freq_error_spec(axes[0], endeavour_data, 'Endeavour', full_sn)
+            freq_error_data = self._plot_freq_error_spec(axes[0, 0], endeavour_data, 'Endeavour', full_sn)
+            self._plot_freq_error_distribution(axes[0, 1], freq_error_data, 'Endeavour', full_sn)
         else:
-            axes[0].text(0.5, 0.5, 'No Endeavour Data', ha='center', va='center', fontsize=14)
-            axes[0].set_title(f'Endeavour - Module {full_sn}')
+            axes[0, 0].text(0.5, 0.5, 'No Endeavour Data', ha='center', va='center', fontsize=14)
+            axes[0, 0].set_title(f'Endeavour - Module {full_sn}')
+            axes[0, 1].text(0.5, 0.5, 'No Endeavour Data', ha='center', va='center', fontsize=14)
+            axes[0, 1].set_title(f'Endeavour Distribution - Module {full_sn}')
         
-        # Plot Kenya (Bank 0 uses set_a, Bank 1 uses set_b)
+        # Plot Kenya - time series and distribution (Bank 0 uses set_a, Bank 1 uses set_b)
         if kenya_data is not None:
-            self._plot_freq_error_spec(axes[1], kenya_data, 'Kenya', full_sn)
+            freq_error_data = self._plot_freq_error_spec(axes[1, 0], kenya_data, 'Kenya', full_sn)
+            self._plot_freq_error_distribution(axes[1, 1], freq_error_data, 'Kenya', full_sn)
         else:
-            axes[1].text(0.5, 0.5, 'No Kenya Data', ha='center', va='center', fontsize=14)
-            axes[1].set_title(f'Kenya - Module {full_sn}')
+            axes[1, 0].text(0.5, 0.5, 'No Kenya Data', ha='center', va='center', fontsize=14)
+            axes[1, 0].set_title(f'Kenya - Module {full_sn}')
+            axes[1, 1].text(0.5, 0.5, 'No Kenya Data', ha='center', va='center', fontsize=14)
+            axes[1, 1].set_title(f'Kenya Distribution - Module {full_sn}')
         
         plt.tight_layout()
         plot_filename = f'missionmode_freqerror_{full_sn}.png'
@@ -1267,7 +1769,9 @@ class module_analysis:
     
     def _plot_freq_error_spec(self, ax, df, spec_name, full_sn):
         """Plot frequency error for one specification using wavelength column
-        Bank 0 uses set_a, Bank 1 uses set_b"""
+        Bank 0 uses set_a, Bank 1 uses set_b
+        Returns: dict with {(bank, channel): [freq_error_values]} for distribution plotting
+        """
         # Find wavelength column
         wl_col = None
         for col in df.columns:
@@ -1277,7 +1781,7 @@ class module_analysis:
         
         if wl_col is None:
             ax.text(0.5, 0.5, 'No wavelength data', ha='center', va='center', fontsize=12)
-            return
+            return {}
         
         # Color maps for channels
         colors_b0 = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
@@ -1285,6 +1789,9 @@ class module_analysis:
         
         # Speed of light constant
         c_speed_light = 299792.458  # Speed of light in nm*THz
+        
+        # Store frequency error data for distribution plot
+        freq_error_data = {}
         
         # Plot each bank and channel combination
         for idx, row in df.iterrows():
@@ -1347,6 +1854,9 @@ class module_analysis:
             x_values = valid_indices
             freq_errors_filtered = freq_errors_array[valid_indices]
             
+            # Store for distribution
+            freq_error_data[(bank, channel)] = freq_errors_filtered.tolist()
+            
             # Plot based on bank
             if bank == 0:
                 ax.plot(x_values, freq_errors_filtered, '-', 
@@ -1378,10 +1888,131 @@ class module_analysis:
         ax.set_xlabel('Seconds')
         ax.set_ylabel('Frequency Error (GHz)')
         ax.set_title(f'{spec_name} - Tile SN: {full_sn} - Mission Mode Frequency Error')
+        
+        # Set x-axis limits
+        ax.set_xlim(0, 3000)
+        
         ax.set_ylim(-40, 40)
         ax.axhline(y=0, color='k', linestyle='-', linewidth=0.5)
         ax.legend(loc='best', fontsize=7, ncol=2)
         ax.grid(True, alpha=0.3)
+        
+        return freq_error_data
+    
+    def _plot_freq_error_distribution(self, ax, freq_error_data, spec_name, full_sn):
+        """Plot statistical distribution of frequency error for each channel"""
+        if not freq_error_data:
+            ax.text(0.5, 0.5, 'No frequency error data', ha='center', va='center', fontsize=12)
+            return
+        
+        # Color maps for channels
+        colors_b0 = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
+        colors_b1 = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
+        
+        # Prepare data for box plot
+        positions = []
+        data_list = []
+        colors_list = []
+        labels_list = []
+        
+        # Sort by bank and channel (reverse order for bottom-to-top display)
+        sorted_keys = sorted(freq_error_data.keys(), reverse=True)
+        
+        for i, (bank, channel) in enumerate(sorted_keys):
+            positions.append(i)
+            data_list.append(freq_error_data[(bank, channel)])
+            
+            if bank == 0:
+                colors_list.append(colors_b0[channel])
+                labels_list.append(f'B0-Ch{channel}')
+            else:
+                colors_list.append(colors_b1[channel])
+                labels_list.append(f'B1-Ch{channel}')
+        
+        # Create box plot (horizontal orientation)
+        bp = ax.boxplot(data_list, positions=positions, vert=False, widths=0.6,
+                        patch_artist=True, showfliers=False,
+                        boxprops=dict(linewidth=1.5),
+                        medianprops=dict(color='black', linewidth=2),
+                        whiskerprops=dict(linewidth=1.5),
+                        capprops=dict(linewidth=1.5))
+        
+        # Color each box
+        for patch, color in zip(bp['boxes'], colors_list):
+            patch.set_facecolor(color)
+            patch.set_alpha(0.7)
+        
+        # Overlay scatter points for all data
+        for i, data in enumerate(data_list):
+            # Add jitter to y-position for better visibility
+            y_positions = np.random.normal(positions[i], 0.08, size=len(data))
+            ax.scatter(data, y_positions, alpha=0.4, s=20, color=colors_list[i], marker='o')
+        
+        # Add median and sigma annotations to the right of each box
+        annotation_x_offset = 0.75  # Position as fraction of plot width
+        
+        for i, data in enumerate(data_list):
+            median_val = np.median(data)
+            sigma_val = np.std(data)
+            
+            # Position annotation to the right
+            y_pos = positions[i]
+            
+            # Add text annotation with box
+            annotation_text = f'μ̃={median_val:.2f}GHz\nσ={sigma_val:.2f}GHz'
+            ax.text(annotation_x_offset, y_pos, annotation_text, 
+                   fontsize=8, ha='left', va='center',
+                   transform=ax.get_yaxis_transform(),
+                   bbox=dict(boxstyle='round,pad=0.4', facecolor='white', 
+                            edgecolor=colors_list[i], linewidth=1.5, alpha=0.9))
+        
+        # Add specification limits if available
+        if self.specifications:
+            spec_key = spec_name.lower()
+            if spec_key in self.specifications:
+                spec = self.specifications[spec_key]
+                
+                # Add wavelength error limits
+                if 'wavelength_error' in spec:
+                    error_limit = spec['wavelength_error']['value']
+                    ax.axvline(x=error_limit, color='red', linestyle='--', linewidth=2, 
+                              label=f'Spec Limit: ±{error_limit} GHz', alpha=0.7)
+                    ax.axvline(x=-error_limit, color='red', linestyle='--', linewidth=2, alpha=0.7)
+                    
+                    # Add shaded region for specification range
+                    ax.axvspan(-error_limit, error_limit, 
+                              color='green', alpha=0.1, label='Spec Range')
+        
+        # Add zero line
+        ax.axvline(x=0, color='k', linestyle='-', linewidth=0.5)
+        
+        ax.set_yticks(positions)
+        ax.set_yticklabels(labels_list)
+        ax.set_xlabel('Frequency Error (GHz)')
+        ax.set_ylabel('Bank-Channel')
+        
+        # Add dashed line between B0 and B1
+        if len(positions) > 8:
+            ax.axhline(y=7.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
+        
+        ax.set_xlim(-40, 40)
+        
+        # Calculate overall statistics
+        all_data = [val for data in data_list for val in data]
+        overall_median = np.median(all_data)
+        overall_sigma = np.std(all_data)
+        
+        # Extract number of tiles from the full_sn parameter
+        if 'Modules' in full_sn:
+            n_tiles_text = full_sn  # Already formatted as "N Modules"
+        else:
+            n_tiles_text = f'Tile SN: {full_sn}'
+        
+        ax.set_title(f'Statistical Distribution\nμ̃={overall_median:.2f}GHz, σ={overall_sigma:.2f}GHz, {n_tiles_text}', 
+                    fontsize=12, fontweight='bold')
+        ax.grid(True, alpha=0.3, axis='x')
+        if self.specifications:
+            ax.legend(loc='best', fontsize=8)
     
     def _load_wavemeter_data(self, module_path, spec_type):
         """Load wavemeter data for a given specification type"""
@@ -1754,6 +2385,153 @@ class module_analysis:
         plt.close()
         
         print(f"  ✓ Mission Mode summary plot saved: {plot_filename}")
+        print(f"  Location: analysis_results/{plot_filename}")
+    
+    def create_mission_mode_statistical_summary(self, modules_data):
+        """Create statistical distribution summary plot combining all modules"""
+        print(f"\n{'='*60}")
+        print("Creating Mission Mode Statistical Distribution Summary")
+        print(f"{'='*60}")
+        
+        # Create figure with 2x2 layout (Endeavour/Kenya x Power/FreqError)
+        # Each subplot has 1.5:1 aspect ratio (height:width)
+        fig, axes = plt.subplots(2, 2, figsize=(16, 24))
+        
+        # Collect all channel data from all modules
+        endeavour_power_all = {}
+        kenya_power_all = {}
+        endeavour_freq_all = {}
+        kenya_freq_all = {}
+        
+        # Speed of light constant for frequency calculation
+        c_speed_light = 299792.458
+        
+        for full_sn, data in sorted(modules_data.items()):
+            # Process Endeavour power data
+            if data['endeavour'] is not None:
+                df = data['endeavour']
+                for idx, row in df.iterrows():
+                    if pd.isna(row['bank']) or pd.isna(row['channel']):
+                        continue
+                    
+                    bank = int(row['bank'])
+                    channel = int(row['channel'])
+                    key = (bank, channel)
+                    
+                    # Process power data
+                    if 'mpd_pic' in df.columns and not pd.isna(row['mpd_pic']):
+                        power_values_uw = row['mpd_pic']
+                        if isinstance(power_values_uw, str):
+                            power_values_uw = [float(x.strip()) for x in power_values_uw.strip('[]').split(',') if x.strip()]
+                            if power_values_uw:
+                                power_dbm = [10 * np.log10(p / 1000.0) for p in power_values_uw]
+                                if key not in endeavour_power_all:
+                                    endeavour_power_all[key] = []
+                                endeavour_power_all[key].extend(power_dbm)
+                    
+                    # Process frequency error data
+                    set_name = 'set_a' if bank == 0 else 'set_b'
+                    if 'wavelength' in df.columns and not pd.isna(row['wavelength']):
+                        wavelength_values_nm = row['wavelength']
+                        if isinstance(wavelength_values_nm, str):
+                            wavelength_values_nm = [float(x.strip()) for x in wavelength_values_nm.strip('[]').split(',') if x.strip()]
+                            if wavelength_values_nm and self.reference_grid:
+                                grid_num = channel + 1
+                                grid_key = f'grid_{grid_num}'
+                                
+                                if set_name in self.reference_grid and grid_key in self.reference_grid[set_name]:
+                                    ref_freq_thz = self.reference_grid[set_name][grid_key]['frequency_thz']
+                                    
+                                    freq_errors = []
+                                    for wl in wavelength_values_nm:
+                                        measured_freq_thz = c_speed_light / wl
+                                        freq_error_ghz = (measured_freq_thz - ref_freq_thz) * 1000
+                                        freq_errors.append(freq_error_ghz)
+                                    
+                                    # Filter outliers
+                                    freq_errors_array = np.array(freq_errors)
+                                    q1 = np.percentile(freq_errors_array, 25)
+                                    q3 = np.percentile(freq_errors_array, 75)
+                                    iqr = q3 - q1
+                                    lower_bound = q1 - 3 * iqr
+                                    upper_bound = q3 + 3 * iqr
+                                    valid_freq_errors = freq_errors_array[(freq_errors_array >= lower_bound) & (freq_errors_array <= upper_bound)]
+                                    
+                                    if len(valid_freq_errors) > 0:
+                                        if key not in endeavour_freq_all:
+                                            endeavour_freq_all[key] = []
+                                        endeavour_freq_all[key].extend(valid_freq_errors.tolist())
+            
+            # Process Kenya data
+            if data['kenya'] is not None:
+                df = data['kenya']
+                for idx, row in df.iterrows():
+                    if pd.isna(row['bank']) or pd.isna(row['channel']):
+                        continue
+                    
+                    bank = int(row['bank'])
+                    channel = int(row['channel'])
+                    key = (bank, channel)
+                    
+                    # Process power data
+                    if 'mpd_pic' in df.columns and not pd.isna(row['mpd_pic']):
+                        power_values_uw = row['mpd_pic']
+                        if isinstance(power_values_uw, str):
+                            power_values_uw = [float(x.strip()) for x in power_values_uw.strip('[]').split(',') if x.strip()]
+                            if power_values_uw:
+                                power_dbm = [10 * np.log10(p / 1000.0) for p in power_values_uw]
+                                if key not in kenya_power_all:
+                                    kenya_power_all[key] = []
+                                kenya_power_all[key].extend(power_dbm)
+                    
+                    # Process frequency error data
+                    set_name = 'set_a' if bank == 0 else 'set_b'
+                    if 'wavelength' in df.columns and not pd.isna(row['wavelength']):
+                        wavelength_values_nm = row['wavelength']
+                        if isinstance(wavelength_values_nm, str):
+                            wavelength_values_nm = [float(x.strip()) for x in wavelength_values_nm.strip('[]').split(',') if x.strip()]
+                            if wavelength_values_nm and self.reference_grid:
+                                grid_num = channel + 1
+                                grid_key = f'grid_{grid_num}'
+                                
+                                if set_name in self.reference_grid and grid_key in self.reference_grid[set_name]:
+                                    ref_freq_thz = self.reference_grid[set_name][grid_key]['frequency_thz']
+                                    
+                                    freq_errors = []
+                                    for wl in wavelength_values_nm:
+                                        measured_freq_thz = c_speed_light / wl
+                                        freq_error_ghz = (measured_freq_thz - ref_freq_thz) * 1000
+                                        freq_errors.append(freq_error_ghz)
+                                    
+                                    # Filter outliers
+                                    freq_errors_array = np.array(freq_errors)
+                                    q1 = np.percentile(freq_errors_array, 25)
+                                    q3 = np.percentile(freq_errors_array, 75)
+                                    iqr = q3 - q1
+                                    lower_bound = q1 - 3 * iqr
+                                    upper_bound = q3 + 3 * iqr
+                                    valid_freq_errors = freq_errors_array[(freq_errors_array >= lower_bound) & (freq_errors_array <= upper_bound)]
+                                    
+                                    if len(valid_freq_errors) > 0:
+                                        if key not in kenya_freq_all:
+                                            kenya_freq_all[key] = []
+                                        kenya_freq_all[key].extend(valid_freq_errors.tolist())
+        
+        # Plot distributions
+        self._plot_power_distribution(axes[0, 0], endeavour_power_all, 'Endeavour', f'{len(modules_data)} Modules')
+        self._plot_power_distribution(axes[1, 0], kenya_power_all, 'Kenya', f'{len(modules_data)} Modules')
+        self._plot_freq_error_distribution(axes[0, 1], endeavour_freq_all, 'Endeavour', f'{len(modules_data)} Modules')
+        self._plot_freq_error_distribution(axes[1, 1], kenya_freq_all, 'Kenya', f'{len(modules_data)} Modules')
+        
+        plt.tight_layout()
+        
+        # Save to analysis_results root
+        summary_path = self.results_path
+        plot_filename = 'missionmode_statistical_summary.png'
+        plt.savefig(summary_path / plot_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ Mission Mode statistical summary plot saved: {plot_filename}")
         print(f"  Location: analysis_results/{plot_filename}")
     
     def plot_operating_points(self, module_sn, full_sn, endeavour_data, kenya_data):
@@ -2728,4 +3506,412 @@ class module_analysis:
         ax.set_xticklabels(all_sns, rotation=45, ha='right')
         ax.set_xlabel('Tile SN')
         ax.grid(True, alpha=0.3, axis='y')
+
+
+class temperature_aggressors_1:
+    """
+    Temperature Aggressors Test 1 Analysis
+    
+    This class analyzes temperature cycling data for a single tile, including:
+    - Temperature profile vs time
+    - Optical wavelength data correlation with temperature
+    """
+    
+    def __init__(self, base_path):
+        """Initialize temperature aggressors test 1 analysis."""
+        self.base_path = Path(base_path)
+        self.data_path = self.base_path / "temperature_aggressors"
+        self.results_path = self.base_path / "analysis_results" / "temperature_aggressors"
+        self.test1_path = self.results_path / "aggressors_test_1"
+        
+        # Create directories
+        self.results_path.mkdir(parents=True, exist_ok=True)
+        self.test1_path.mkdir(parents=True, exist_ok=True)
+        
+        # Load data
+        self.temp_log_file = self.data_path / "temperature_log_20251009_One tile data with Temp Cycle.csv"
+        self.excel_file = self.data_path / "One tile data with Temp Cycle.xlsx"
+        
+        print("=" * 80)
+        print("Temperature Aggressors Test 1 - Analysis")
+        print("=" * 80)
+        print(f"Data path: {self.data_path}")
+        print(f"Results path: {self.test1_path}")
+        print()
+    
+    def load_temperature_data(self):
+        """Load temperature log CSV data."""
+        if not self.temp_log_file.exists():
+            print(f"Error: Temperature log file not found: {self.temp_log_file}")
+            return None
+        
+        # Read CSV
+        df = pd.read_csv(self.temp_log_file)
+        print(f"Loaded temperature data: {len(df)} rows")
+        print(f"Columns: {df.columns.tolist()}")
+        
+        # Parse timestamp
+        df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+        
+        # Calculate elapsed time in seconds from start
+        df['Time_seconds'] = (df['Timestamp'] - df['Timestamp'].iloc[0]).dt.total_seconds()
+        
+        return df
+    
+    def plot_temperature_profile(self):
+        """Plot temperature vs time."""
+        print("Plotting temperature profile...")
+        
+        # Load data
+        df = self.load_temperature_data()
+        if df is None:
+            return
+        
+        # Create plot
+        fig, ax = plt.subplots(figsize=(14, 6))
+        
+        # Plot temperature vs time
+        ax.plot(df['Time_seconds'], df['Temperature_C'], 
+               linewidth=1.5, color='red', label='Temperature')
+        
+        ax.set_xlabel('Time (seconds)', fontsize=12)
+        ax.set_ylabel('Temperature (°C)', fontsize=12)
+        ax.set_title('Temperature Profile vs Time\nTemperature Cycling Test', 
+                    fontsize=14, fontweight='bold')
+        ax.legend(loc='best', fontsize=10)
+        ax.grid(True, alpha=0.3)
+        
+        # Save plot
+        plot_filename = 'temperature_profile.png'
+        plt.savefig(self.test1_path / plot_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ Plot saved: {plot_filename}")
+        print(f"  Temperature range: {df['Temperature_C'].min():.2f}°C to {df['Temperature_C'].max():.2f}°C")
+        print(f"  Total duration: {df['Time_seconds'].max():.0f} seconds ({df['Time_seconds'].max()/60:.1f} minutes)")
+        print()
+    
+    def load_excel_data(self):
+        """Load and parse Excel file with time-series data."""
+        import ast
+        
+        if not self.excel_file.exists():
+            print(f"Error: Excel file not found: {self.excel_file}")
+            return None
+        
+        print("Loading Excel data...")
+        df = pd.read_excel(self.excel_file)
+        print(f"  Loaded {len(df)} channels of data")
+        
+        # Parse the string arrays into lists
+        for col in ['wavelength', 'power', 'timestamp', 'laser_dac', 'voa_dac', 
+                    'tpic', 'tmux', 'tpmic', 'mpd_mux', 'mpd_pic']:
+            if col in df.columns:
+                df[col] = df[col].apply(lambda x: ast.literal_eval(x) if isinstance(x, str) else x)
+        
+        return df
+    
+    def align_timestamps(self, excel_df, temp_df=None):
+        """Align timestamps using Excel file as reference."""
+        # Get reference start time from first channel's first timestamp
+        first_timestamps = excel_df.iloc[0]['timestamp']
+        parsed_first = pd.to_datetime(first_timestamps)
+        ref_start = parsed_first[0]
+        
+        # Process each channel's timestamps
+        time_seconds_list = []
+        for idx, row in excel_df.iterrows():
+            timestamps = row['timestamp']
+            # Parse timestamps and calculate seconds from first timestamp
+            parsed_times = pd.to_datetime(timestamps)
+            time_seconds = (parsed_times - ref_start).total_seconds().values
+            time_seconds_list.append(time_seconds)
+        
+        # Add as a new column
+        excel_df['time_seconds'] = time_seconds_list
+        
+        # If temp_df is provided, align it to the same reference
+        if temp_df is not None:
+            temp_df['Time_seconds'] = (temp_df['Timestamp'] - ref_start).dt.total_seconds()
+        
+        return excel_df
+    
+    def plot_missionmode_power(self):
+        """Plot optical power vs time for all channels with temperature overlay."""
+        print("Plotting mission mode power...")
+        
+        # Load data
+        temp_df = self.load_temperature_data()
+        excel_df = self.load_excel_data()
+        if temp_df is None or excel_df is None:
+            return
+        
+        # Align timestamps
+        excel_df = self.align_timestamps(excel_df, temp_df)
+        
+        # Calculate max temperature rate of change
+        temp_diff = temp_df['Temperature_C'].diff()
+        time_diff = temp_df['Time_seconds'].diff()
+        temp_rate = (temp_diff / time_diff).abs()
+        max_temp_rate = temp_rate.max()
+        
+        # Create figure with single subplot for both banks
+        fig, ax = plt.subplots(1, 1, figsize=(16, 6))
+        ax_temp = ax.twinx()
+        
+        # Color maps
+        colors_b0 = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
+        colors_b1 = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
+        
+        # Plot both banks on same subplot
+        for bank in [0, 1]:
+            bank_data = excel_df[excel_df['bank'] == bank]
+            for idx, row in bank_data.iterrows():
+                channel = row['channel']
+                time_sec = row['time_seconds']
+                # Use mpd_pic (in µW) and convert to dBm
+                power_uw = np.array(row['mpd_pic'])
+                power_dbm = 10 * np.log10(power_uw / 1000.0)
+                
+                color = colors_b0[channel] if bank == 0 else colors_b1[channel]
+                bank_label = f'B{bank}-Ch{channel}'
+                ax.plot(time_sec, power_dbm, linewidth=1.5, color=color, 
+                       label=bank_label, alpha=0.8)
+        
+        # Plot temperature on secondary axis
+        ax_temp.plot(temp_df['Time_seconds'], temp_df['Temperature_C'],
+                    'r--', linewidth=2, alpha=0.5, 
+                    label=f'Temperature (max rate: {max_temp_rate:.2f}°C/s)')
+        
+        # Configure axes
+        ax.set_xlabel('Time (seconds)', fontsize=11)
+        ax.set_ylabel('Optical Power (dBm)', fontsize=11)
+        ax.set_xlim(0, 2500)
+        ax.set_ylim(0, 10)
+        ax_temp.set_ylabel('Temperature (°C)', fontsize=11, color='red')
+        ax_temp.tick_params(axis='y', labelcolor='red')
+        
+        ax.set_title('Optical Power vs Time\nwith Temperature Cycling',
+                    fontsize=12, fontweight='bold')
+        
+        ax.legend(loc='upper left', fontsize=7, ncol=8)
+        ax_temp.legend(loc='upper right', fontsize=8)
+        ax.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plot_filename = 'missionmode_power_temptest.png'
+        plt.savefig(self.test1_path / plot_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ Plot saved: {plot_filename}")
+        print()
+    
+    def plot_missionmode_freqerror(self):
+        """Plot frequency error vs time for all channels with temperature overlay."""
+        print("Plotting mission mode frequency error...")
+        
+        # Load data
+        temp_df = self.load_temperature_data()
+        excel_df = self.load_excel_data()
+        if temp_df is None or excel_df is None:
+            return
+        
+        # Align timestamps
+        excel_df = self.align_timestamps(excel_df, temp_df)
+        
+        # Calculate max temperature rate of change
+        temp_diff = temp_df['Temperature_C'].diff()
+        time_diff = temp_df['Time_seconds'].diff()
+        temp_rate = (temp_diff / time_diff).abs()
+        max_temp_rate = temp_rate.max()
+        
+        # Calculate frequency error from wavelength
+        c_speed_light = 299792.458  # Speed of light in THz*nm
+        
+        # Create figure with single subplot for both banks
+        fig, ax = plt.subplots(1, 1, figsize=(16, 6))
+        ax_temp = ax.twinx()
+        
+        # Color maps
+        colors_b0 = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
+        colors_b1 = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
+        
+        # Plot both banks on same subplot
+        for bank in [0, 1]:
+            bank_data = excel_df[excel_df['bank'] == bank]
+            for idx, row in bank_data.iterrows():
+                channel = row['channel']
+                time_sec = row['time_seconds']
+                
+                # Calculate frequency error if wavelength data exists
+                wavelengths = np.array(row['wavelength'])
+                # Use settled wavelength as reference
+                ref_wavelength = row['settled_wavelength_nm']
+                
+                # Calculate frequency error in GHz
+                measured_freq_thz = c_speed_light / wavelengths
+                ref_freq_thz = c_speed_light / ref_wavelength
+                freq_error_ghz = (measured_freq_thz - ref_freq_thz) * 1000
+                
+                color = colors_b0[channel] if bank == 0 else colors_b1[channel]
+                bank_label = f'B{bank}-Ch{channel}'
+                ax.plot(time_sec, freq_error_ghz, linewidth=1.5, color=color,
+                       label=bank_label, alpha=0.8)
+        
+        # Plot temperature on secondary axis
+        ax_temp.plot(temp_df['Time_seconds'], temp_df['Temperature_C'],
+                    'r--', linewidth=2, alpha=0.5,
+                    label=f'Temperature (max rate: {max_temp_rate:.2f}°C/s)')
+        
+        # Configure axes
+        ax.set_xlabel('Time (seconds)', fontsize=11)
+        ax.set_ylabel('Frequency Error (GHz)', fontsize=11)
+        ax.set_xlim(0, 2500)
+        ax_temp.set_ylabel('Temperature (°C)', fontsize=11, color='red')
+        ax_temp.tick_params(axis='y', labelcolor='red')
+        
+        # Add spec limits (±20 GHz)
+        ax.axhline(y=20, color='red', linestyle=':', linewidth=1.5, alpha=0.5)
+        ax.axhline(y=-20, color='red', linestyle=':', linewidth=1.5, alpha=0.5)
+        ax.axhspan(-20, 20, color='green', alpha=0.05)
+        
+        ax.set_title('Frequency Error vs Time\nwith Temperature Cycling',
+                    fontsize=12, fontweight='bold')
+        
+        ax.legend(loc='upper left', fontsize=7, ncol=8)
+        ax_temp.legend(loc='upper right', fontsize=8)
+        ax.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plot_filename = 'missionmode_freqerror_temptest.png'
+        plt.savefig(self.test1_path / plot_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ Plot saved: {plot_filename}")
+        print()
+    
+    def plot_missionmode_operatingpoints(self):
+        """Plot operating points (DACs, temperatures) vs time with temperature overlay."""
+        print("Plotting mission mode operating points...")
+        
+        # Load data
+        temp_df = self.load_temperature_data()
+        excel_df = self.load_excel_data()
+        if temp_df is None or excel_df is None:
+            return
+        
+        # Align timestamps
+        excel_df = self.align_timestamps(excel_df, temp_df)
+        
+        # Calculate max temperature rate of change
+        temp_diff = temp_df['Temperature_C'].diff()
+        time_diff = temp_df['Time_seconds'].diff()
+        temp_rate = (temp_diff / time_diff).abs()
+        max_temp_rate = temp_rate.max()
+        
+        # Create figure with 5 subplots (one for each operating point)
+        # Parameters to plot: laser_dac, voa_dac, tpic, tmux, tpmic
+        params = ['laser_dac', 'voa_dac', 'tpic', 'tmux', 'tpmic']
+        param_labels = ['Laser DAC', 'VOA DAC', 'TPIC (°C)', 'TMUX (°C)', 'TPMIC (°C)']
+        
+        fig, axes = plt.subplots(5, 1, figsize=(16, 18))
+        
+        # Color maps
+        colors_b0 = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
+        colors_b1 = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
+        
+        for param_idx, (param, param_label) in enumerate(zip(params, param_labels)):
+            ax = axes[param_idx]
+            ax_temp = ax.twinx()
+            
+            # Plot both banks on the same subplot
+            for bank in [0, 1]:
+                bank_data = excel_df[excel_df['bank'] == bank]
+                
+                for idx, row in bank_data.iterrows():
+                    channel = row['channel']
+                    time_sec = row['time_seconds']
+                    
+                    # Get parameter values
+                    param_values = np.array(row[param])
+                    
+                    color = colors_b0[channel] if bank == 0 else colors_b1[channel]
+                    bank_label = f'B{bank}-Ch{channel}'
+                    
+                    ax.plot(time_sec, param_values, linewidth=1.5, color=color,
+                           label=bank_label, alpha=0.8)
+            
+            # Plot temperature on secondary axis
+            ax_temp.plot(temp_df['Time_seconds'], temp_df['Temperature_C'],
+                        'r--', linewidth=2, alpha=0.5,
+                        label=f'Temperature (max rate: {max_temp_rate:.2f}°C/s)')
+            
+            # Configure axes
+            ax.set_xlabel('Time (seconds)', fontsize=11)
+            ax.set_ylabel(param_label, fontsize=11)
+            ax.set_xlim(0, 2500)
+            ax_temp.set_ylabel('Temperature (°C)', fontsize=11, color='red')
+            ax_temp.tick_params(axis='y', labelcolor='red')
+            
+            ax.set_title(f'{param_label} vs Time\nwith Temperature Cycling',
+                        fontsize=12, fontweight='bold')
+            
+            # Legend only for first subplot to avoid cluttering
+            if param_idx == 0:
+                ax.legend(loc='upper left', fontsize=7, ncol=8)
+                ax_temp.legend(loc='upper right', fontsize=8)
+            else:
+                ax_temp.legend(loc='upper right', fontsize=8)
+            
+            ax.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plot_filename = 'missionmode_operatingpoints_temptest.png'
+        plt.savefig(self.test1_path / plot_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ Plot saved: {plot_filename}")
+        print()
+    
+    def run_all_plots(self):
+        """Generate all mission mode plots."""
+        print("\n" + "=" * 80)
+        print("GENERATING ALL MISSION MODE PLOTS")
+        print("=" * 80 + "\n")
+        
+        self.plot_temperature_profile()
+        self.plot_missionmode_power()
+        self.plot_missionmode_freqerror()
+        self.plot_missionmode_operatingpoints()
+        
+        print("=" * 80)
+        print("All plots completed!")
+        print(f"Results saved to: {self.test1_path}")
+        print("=" * 80)
+
+
+class temperature_aggressors_2:
+    """
+    Temperature Aggressors Test 2 Analysis
+    
+    This class provides additional temperature aggressors analysis.
+    """
+    
+    def __init__(self, base_path):
+        """Initialize temperature aggressors test 2 analysis."""
+        self.base_path = Path(base_path)
+        self.data_path = self.base_path / "temperature_aggressors"
+        self.results_path = self.base_path / "analysis_results" / "temperature_aggressors"
+        self.test2_path = self.results_path / "aggressors_test_2"
+        
+        # Create directories
+        self.results_path.mkdir(parents=True, exist_ok=True)
+        self.test2_path.mkdir(parents=True, exist_ok=True)
+        
+        print("=" * 80)
+        print("Temperature Aggressors Test 2 - Analysis")
+        print("=" * 80)
+        print(f"Data path: {self.data_path}")
+        print(f"Results path: {self.test2_path}")
+        print()
     

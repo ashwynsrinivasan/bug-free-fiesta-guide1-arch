@@ -17,6 +17,9 @@ def main():
     # Run Mission Mode analysis
     analyzer.mission_mode()
     
+    # Run Alabama analysis (Kenya with Endeavour freq specs)
+    analyzer.mission_mode_alabama()
+    
     print("\n" + "=" * 80)
     print("All analysis completed!")
     print("=" * 80)
