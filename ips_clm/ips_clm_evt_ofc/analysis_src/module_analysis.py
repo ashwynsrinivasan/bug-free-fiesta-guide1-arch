@@ -3973,7 +3973,7 @@ class temperature_aggressors_2:
         return temp_df
     
     def plot_missionmode_power(self):
-        """Plot optical power vs time for all tiles in a 4x4 grid."""
+        """Plot optical power vs time for all tiles in a 2x8 grid."""
         print("Plotting mission mode power for all tiles...")
         
         # Load data
@@ -3988,8 +3988,8 @@ class temperature_aggressors_2:
         colors_a = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
         colors_b = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
         
-        # Create figure with 4x4 subplots
-        fig, axes = plt.subplots(4, 4, figsize=(24, 24))
+        # Create figure with 8x2 subplots (8 rows, 2 columns)
+        fig, axes = plt.subplots(8, 2, figsize=(16, 32))
         axes = axes.flatten()
         
         # Plot each tile in a separate subplot
@@ -4028,11 +4028,16 @@ class temperature_aggressors_2:
             # Configure axes
             ax.set_xlabel('Time (seconds)', fontsize=9)
             ax.set_ylabel('Optical Power (dBm)', fontsize=9)
-            ax.set_ylim(8, 13)
+            ax.set_ylim(9, 13)
             
             ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
             ax.tick_params(labelsize=8)
             ax.grid(True, alpha=0.3)
+            
+            # Add legend
+            handles, labels = ax.get_legend_handles_labels()
+            by_label = dict(zip(labels, handles))
+            ax.legend(by_label.values(), by_label.keys(), loc='best', fontsize=6, ncol=2)
         
         # Hide unused subplots
         for plot_idx in range(len(tile_ids), 16):
@@ -4046,7 +4051,7 @@ class temperature_aggressors_2:
         plt.close()
         
         print(f"  ✓ Combined plot saved: {plot_filename}")
-        print(f"  Plotted {len(tile_ids)} tiles in 4x4 grid\n")
+        print(f"  Plotted {len(tile_ids)} tiles in 2x8 grid\n")
     
     def plot_temperature_profile(self):
         """Plot temperature vs time."""
@@ -4086,7 +4091,7 @@ class temperature_aggressors_2:
         print()
     
     def plot_missionmode_freqerror(self):
-        """Plot frequency error vs time for all tiles in a 4x4 grid."""
+        """Plot frequency error vs time for all tiles in a 2x8 grid."""
         print("Plotting mission mode frequency error for all tiles...")
         
         # Load data
@@ -4104,8 +4109,8 @@ class temperature_aggressors_2:
         colors_a = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
         colors_b = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
         
-        # Create figure with 4x4 subplots
-        fig, axes = plt.subplots(4, 4, figsize=(24, 24))
+        # Create figure with 8x2 subplots (8 rows, 2 columns)
+        fig, axes = plt.subplots(8, 2, figsize=(16, 32))
         axes = axes.flatten()
         
         # Plot each tile in a separate subplot
@@ -4124,7 +4129,11 @@ class temperature_aggressors_2:
                 wavelengths = np.array(row['wavelength_nm'])
                 if len(wavelengths) > 1:
                     wavelengths = wavelengths[1:]  # Skip first element
-                    ref_wavelengths[bank_type] = wavelengths
+                    # Filter out invalid wavelength data (8000000000.0)
+                    valid_mask = wavelengths < 8000000000.0
+                    if valid_mask.any():
+                        wavelengths = wavelengths[valid_mask]
+                        ref_wavelengths[bank_type] = wavelengths
             
             # Plot both banks
             for bank_type in ['BANK_A', 'BANK_B']:
@@ -4142,9 +4151,21 @@ class temperature_aggressors_2:
                     if len(wavelengths) > 1:
                         wavelengths = wavelengths[1:]  # Skip first element
                         
+                        # Filter out invalid wavelength data (8000000000.0)
+                        valid_mask = wavelengths < 8000000000.0
+                        if not valid_mask.any():
+                            continue
+                        
+                        wavelengths = wavelengths[valid_mask]
+                        
+                        # Ensure wavelengths and ref_wl have same length
+                        min_len = min(len(wavelengths), len(ref_wl))
+                        wavelengths = wavelengths[:min_len]
+                        ref_wl_subset = ref_wl[:min_len]
+                        
                         # Calculate frequency error in GHz
                         measured_freq_thz = c_speed_light / wavelengths
-                        ref_freq_thz = c_speed_light / ref_wl
+                        ref_freq_thz = c_speed_light / ref_wl_subset
                         freq_error_ghz = (measured_freq_thz - ref_freq_thz) * 1000
                         
                         # Create time array for this measurement
@@ -4171,6 +4192,11 @@ class temperature_aggressors_2:
             ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
             ax.tick_params(labelsize=8)
             ax.grid(True, alpha=0.3)
+            
+            # Add legend
+            handles, labels = ax.get_legend_handles_labels()
+            by_label = dict(zip(labels, handles))
+            ax.legend(by_label.values(), by_label.keys(), loc='best', fontsize=6, ncol=2)
         
         # Hide unused subplots
         for plot_idx in range(len(tile_ids), 16):
@@ -4184,7 +4210,7 @@ class temperature_aggressors_2:
         plt.close()
         
         print(f"  ✓ Combined plot saved: {plot_filename}")
-        print(f"  Plotted {len(tile_ids)} tiles in 4x4 grid\n")
+        print(f"  Plotted {len(tile_ids)} tiles in 2x8 grid\n")
     
     def plot_missionmode_operatingpoints(self):
         """Plot operating points vs time for all tiles."""
