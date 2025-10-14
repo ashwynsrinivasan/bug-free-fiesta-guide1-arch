@@ -4119,8 +4119,8 @@ class temperature_aggressors_2:
             tile_data = wavemeter_df[wavemeter_df['tile_id'] == tile_id]
             
             # Load reference wavelengths (using first cycle as reference)
-            # Note: wavelength_nm column contains wavelength data off by 12 orders of magnitude
-            # Multiply by 1e9 to convert to nm
+            # Note: wavelength_nm column contains wavelength data off by 12 orders of magnitude  
+            # DIVIDE by 1e9 to convert to nm (raw values are ~1.3e12, should be ~1300 nm)
             ref_wavelengths = {}
             cycle_0_data = tile_data[tile_data['cycle_number'] == 0]
             for idx, row in cycle_0_data.iterrows():
@@ -4128,12 +4128,13 @@ class temperature_aggressors_2:
                 wavelengths_raw = np.array(row['wavelength_nm'])
                 if len(wavelengths_raw) > 1:
                     wavelengths_raw = wavelengths_raw[1:]  # Skip first element
-                    # Filter out invalid wavelength data (8000000000.0)
-                    valid_mask = wavelengths_raw < 8000000000.0
+                    # Filter out invalid wavelength data (first element is 8e9, rest are around 1.3e12)
+                    # Keep values > 1e12 (actual wavelength/frequency data)
+                    valid_mask = wavelengths_raw > 1e12
                     if valid_mask.any():
                         wavelengths_raw = wavelengths_raw[valid_mask]
-                        # Convert to nm by multiplying by 1e9
-                        wavelengths_nm = wavelengths_raw * 1e9
+                        # Convert to nm by DIVIDING by 1e9 (raw ~1.3e12 -> ~1300 nm)
+                        wavelengths_nm = wavelengths_raw / 1e9
                         ref_wavelengths[bank_type] = wavelengths_nm
             
             # Speed of light constant
@@ -4155,14 +4156,14 @@ class temperature_aggressors_2:
                     if len(wavelengths_raw) > 1:
                         wavelengths_raw = wavelengths_raw[1:]  # Skip first element
                         
-                        # Filter out invalid wavelength data (8000000000.0)
-                        valid_mask = wavelengths_raw < 8000000000.0
+                        # Filter out invalid wavelength data (keep values > 1e12)
+                        valid_mask = wavelengths_raw > 1e12
                         if not valid_mask.any():
                             continue
                         
                         wavelengths_raw = wavelengths_raw[valid_mask]
-                        # Convert to nm by multiplying by 1e9
-                        wavelengths_nm = wavelengths_raw * 1e9
+                        # Convert to nm by DIVIDING by 1e9 (raw ~1.3e12 -> ~1300 nm)
+                        wavelengths_nm = wavelengths_raw / 1e9
                         
                         # Ensure wavelengths and ref_wl have same length
                         min_len = min(len(wavelengths_nm), len(ref_wl))
