@@ -3954,8 +3954,8 @@ class temperature_aggressors_2:
         return df
     
     def subsample_to_hourly(self, df):
-        """Subsample data to 10-minute intervals to reduce data volume."""
-        print("\nSubsampling data to 10-minute intervals...")
+        """Subsample data to 1-minute intervals to reduce data volume."""
+        print("\nSubsampling data to 1-minute intervals...")
         print(f"  Original data: {len(df)} rows")
         
         # Set timestamp as index for resampling
@@ -3964,8 +3964,8 @@ class temperature_aggressors_2:
         # Group by tile and bank, then resample each group
         subsampled_groups = []
         for (tile_id, bank_type), group in df.groupby(['tile_id', 'bank_type']):
-            # Resample to 10-minute intervals, taking the first sample in each interval
-            resampled = group.resample('10T').first()  # '10T' means 10 minutes
+            # Resample to 1-minute intervals, taking the first sample in each interval
+            resampled = group.resample('1T').first()  # '1T' means 1 minute
             # Remove any NaN rows (intervals with no data)
             resampled = resampled.dropna(subset=['time_seconds'])
             subsampled_groups.append(resampled)
@@ -4384,15 +4384,379 @@ class temperature_aggressors_2:
         
         print(f"\nCompleted operating points plots for {len(tile_ids)} tiles\n")
     
+    def plot_missionmode_power_zoomed(self):
+        """Plot optical power vs time for all tiles in a 2x8 grid, zoomed to 48-50 hours with temperature overlay."""
+        print("Plotting zoomed mission mode power (48-50 hr) with temperature overlay...")
+        
+        # Load data (without subsampling for zoomed view)
+        wavemeter_df = self.load_wavemeter_data()
+        temp_df = self.load_temperature_data()
+        if wavemeter_df is None or temp_df is None:
+            return
+        
+        # Filter data to 48-50 hour window
+        time_min = 48 * 3600  # 48 hours in seconds
+        time_max = 50 * 3600  # 50 hours in seconds
+        wavemeter_df = wavemeter_df[(wavemeter_df['time_seconds'] >= time_min) & 
+                                      (wavemeter_df['time_seconds'] <= time_max)]
+        
+        # Align temperature data
+        temp_df = self.align_with_temperature(wavemeter_df, temp_df)
+        temp_df = temp_df[(temp_df['Time_seconds'] >= time_min) & 
+                          (temp_df['Time_seconds'] <= time_max)]
+        
+        # Get all unique tiles
+        tile_ids = sorted(wavemeter_df['tile_id'].unique())
+        
+        # Color maps
+        colors_a = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
+        colors_b = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
+        
+        # Create figure with 8x2 subplots
+        fig, axes = plt.subplots(8, 2, figsize=(16, 32))
+        axes = axes.flatten()
+        
+        # Plot each tile
+        for plot_idx, tile_id in enumerate(tile_ids):
+            if plot_idx >= 16:
+                break
+                
+            ax = axes[plot_idx]
+            ax2 = ax.twinx()  # Create second y-axis for temperature
+            
+            tile_data = wavemeter_df[wavemeter_df['tile_id'] == tile_id]
+            
+            # Plot both banks
+            for bank_type in ['BANK_A', 'BANK_B']:
+                bank_data = tile_data[tile_data['bank_type'] == bank_type]
+                
+                colors = colors_a if bank_type == 'BANK_A' else colors_b
+                bank_label = 'A' if bank_type == 'BANK_A' else 'B'
+                
+                channel_data = {i: {'time': [], 'power': []} for i in range(8)}
+                
+                for idx, row in bank_data.iterrows():
+                    time_hours = row['time_seconds'] / 3600.0
+                    power_uw = np.array(row['pic_mpd_value'])
+                    if len(power_uw) > 1:
+                        power_uw = power_uw[1:]
+                        power_dbm = 10 * np.log10(power_uw / 1000.0)
+                        
+                        for ch_idx, p in enumerate(power_dbm):
+                            if ch_idx < 8:
+                                channel_data[ch_idx]['time'].append(time_hours)
+                                channel_data[ch_idx]['power'].append(p)
+                
+                for ch_idx in range(8):
+                    if len(channel_data[ch_idx]['time']) > 0:
+                        ax.plot(channel_data[ch_idx]['time'], channel_data[ch_idx]['power'],
+                               color=colors[ch_idx], linewidth=0.8, alpha=0.7,
+                               label=f'B{bank_label}-Ch{ch_idx}', marker='o', markersize=1.5)
+            
+            # Plot temperature on second y-axis
+            temp_hours = temp_df['Time_seconds'].values / 3600.0
+            temp_values = temp_df['Temperature_C'].values
+            ax2.plot(temp_hours, temp_values, color='red', linewidth=2, alpha=0.6, 
+                    linestyle='--', label='Case Temp')
+            
+            # Configure axes
+            ax.set_xlabel('Time (hours)', fontsize=9)
+            ax.set_ylabel('Optical Power (dBm)', fontsize=9, color='black')
+            ax2.set_ylabel('Temperature (°C)', fontsize=9, color='red')
+            ax.set_ylim(9, 13)
+            ax.set_xlim(48, 50)
+            ax2.tick_params(axis='y', labelcolor='red')
+            
+            ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
+            ax.tick_params(labelsize=8)
+            ax.grid(True, alpha=0.3)
+            
+            # Add legends
+            lines1, labels1 = ax.get_legend_handles_labels()
+            lines2, labels2 = ax2.get_legend_handles_labels()
+            by_label = dict(zip(labels1, lines1))
+            ax.legend(by_label.values(), by_label.keys(), loc='upper left', fontsize=5, ncol=2)
+            ax2.legend(lines2, labels2, loc='upper right', fontsize=6)
+        
+        # Hide unused subplots
+        for plot_idx in range(len(tile_ids), 16):
+            axes[plot_idx].axis('off')
+        
+        plt.suptitle('Optical Power vs Time (48-50 hr zoom) - All Tiles', fontsize=14, fontweight='bold', y=0.995)
+        plt.tight_layout()
+        
+        plot_filename = 'missionmode_power_all_tiles_zoomed.png'
+        plt.savefig(self.test2_path / plot_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ Zoomed plot saved: {plot_filename}\n")
+    
+    def plot_missionmode_freqerror_zoomed(self):
+        """Plot frequency error vs time for all tiles in a 2x8 grid, zoomed to 48-50 hours with temperature overlay."""
+        print("Plotting zoomed mission mode frequency error (48-50 hr) with temperature overlay...")
+        
+        # Load data (without subsampling)
+        wavemeter_df = self.load_wavemeter_data()
+        temp_df = self.load_temperature_data()
+        if wavemeter_df is None or temp_df is None:
+            return
+        
+        # Filter data to 48-50 hour window
+        time_min = 48 * 3600
+        time_max = 50 * 3600
+        wavemeter_df = wavemeter_df[(wavemeter_df['time_seconds'] >= time_min) & 
+                                      (wavemeter_df['time_seconds'] <= time_max)]
+        
+        # Align temperature data
+        temp_df = self.align_with_temperature(wavemeter_df, temp_df)
+        temp_df = temp_df[(temp_df['Time_seconds'] >= time_min) & 
+                          (temp_df['Time_seconds'] <= time_max)]
+        
+        tile_ids = sorted(wavemeter_df['tile_id'].unique())
+        colors_a = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
+        colors_b = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
+        
+        fig, axes = plt.subplots(8, 2, figsize=(16, 32))
+        axes = axes.flatten()
+        
+        for plot_idx, tile_id in enumerate(tile_ids):
+            if plot_idx >= 16:
+                break
+                
+            ax = axes[plot_idx]
+            ax2 = ax.twinx()
+            
+            tile_data = wavemeter_df[wavemeter_df['tile_id'] == tile_id]
+            
+            # Load reference wavelengths
+            ref_wavelengths = {}
+            cycle_0_data = tile_data[tile_data['cycle_number'] == 0]
+            for idx, row in cycle_0_data.iterrows():
+                bank_type = row['bank_type']
+                wavelengths_raw = np.array(row['wavelength_nm'])
+                if len(wavelengths_raw) > 1:
+                    wavelengths_raw = wavelengths_raw[1:]
+                    valid_mask = wavelengths_raw > 1e12
+                    if valid_mask.any():
+                        wavelengths_raw = wavelengths_raw[valid_mask]
+                        wavelengths_nm = wavelengths_raw / 1e9
+                        ref_wavelengths[bank_type] = wavelengths_nm
+            
+            c_speed_light = 299792.458
+            
+            for bank_type in ['BANK_A', 'BANK_B']:
+                bank_data = tile_data[tile_data['bank_type'] == bank_type]
+                
+                if bank_type not in ref_wavelengths:
+                    continue
+                
+                ref_wl = ref_wavelengths[bank_type]
+                colors = colors_a if bank_type == 'BANK_A' else colors_b
+                bank_label = 'A' if bank_type == 'BANK_A' else 'B'
+                
+                channel_data = {i: {'time': [], 'freq_error': []} for i in range(8)}
+                
+                for idx, row in bank_data.iterrows():
+                    time_hours = row['time_seconds'] / 3600.0
+                    wavelengths_raw = np.array(row['wavelength_nm'])
+                    
+                    if len(wavelengths_raw) > 1:
+                        wavelengths_raw = wavelengths_raw[1:]
+                        valid_mask = wavelengths_raw > 1e12
+                        if not valid_mask.any():
+                            continue
+                        
+                        wavelengths_raw = wavelengths_raw[valid_mask]
+                        wavelengths_nm = wavelengths_raw / 1e9
+                        
+                        min_len = min(len(wavelengths_nm), len(ref_wl))
+                        wavelengths_nm = wavelengths_nm[:min_len]
+                        ref_wl_subset = ref_wl[:min_len]
+                        
+                        measured_freq_thz = c_speed_light / wavelengths_nm
+                        ref_freq_thz = c_speed_light / ref_wl_subset
+                        freq_error_ghz = (measured_freq_thz - ref_freq_thz) * 1000
+                        
+                        for ch_idx, f in enumerate(freq_error_ghz):
+                            if ch_idx < 8:
+                                channel_data[ch_idx]['time'].append(time_hours)
+                                channel_data[ch_idx]['freq_error'].append(f)
+                
+                for ch_idx in range(8):
+                    if len(channel_data[ch_idx]['time']) > 0:
+                        ax.plot(channel_data[ch_idx]['time'], channel_data[ch_idx]['freq_error'],
+                               color=colors[ch_idx], linewidth=0.8, alpha=0.7,
+                               label=f'B{bank_label}-Ch{ch_idx}', marker='o', markersize=1.5)
+            
+            # Plot temperature on second y-axis
+            temp_hours = temp_df['Time_seconds'].values / 3600.0
+            temp_values = temp_df['Temperature_C'].values
+            ax2.plot(temp_hours, temp_values, color='red', linewidth=2, alpha=0.6,
+                    linestyle='--', label='Case Temp')
+            
+            ax.set_xlabel('Time (hours)', fontsize=9)
+            ax.set_ylabel('Frequency Error (GHz)', fontsize=9, color='black')
+            ax2.set_ylabel('Temperature (°C)', fontsize=9, color='red')
+            ax.set_xlim(48, 50)
+            ax2.tick_params(axis='y', labelcolor='red')
+            
+            ax.axhline(y=20, color='red', linestyle=':', linewidth=1.5, alpha=0.3)
+            ax.axhline(y=-20, color='red', linestyle=':', linewidth=1.5, alpha=0.3)
+            
+            ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
+            ax.tick_params(labelsize=8)
+            ax.grid(True, alpha=0.3)
+            
+            lines1, labels1 = ax.get_legend_handles_labels()
+            lines2, labels2 = ax2.get_legend_handles_labels()
+            by_label = dict(zip(labels1, lines1))
+            ax.legend(by_label.values(), by_label.keys(), loc='upper left', fontsize=5, ncol=2)
+            ax2.legend(lines2, labels2, loc='upper right', fontsize=6)
+        
+        for plot_idx in range(len(tile_ids), 16):
+            axes[plot_idx].axis('off')
+        
+        plt.suptitle('Frequency Error vs Time (48-50 hr zoom) - All Tiles', fontsize=14, fontweight='bold', y=0.995)
+        plt.tight_layout()
+        
+        plot_filename = 'missionmode_freqerror_all_tiles_zoomed.png'
+        plt.savefig(self.test2_path / plot_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ Zoomed plot saved: {plot_filename}\n")
+    
+    def plot_missionmode_operatingpoints_zoomed(self):
+        """Plot operating points vs time for all tiles, zoomed to 48-50 hours with temperature overlay."""
+        print("Plotting zoomed mission mode operating points (48-50 hr) for all tiles...")
+        
+        # Load data
+        wavemeter_df = self.load_wavemeter_data()
+        temp_df = self.load_temperature_data()
+        if wavemeter_df is None or temp_df is None:
+            return
+        
+        # Filter to 48-50 hour window
+        time_min = 48 * 3600
+        time_max = 50 * 3600
+        wavemeter_df = wavemeter_df[(wavemeter_df['time_seconds'] >= time_min) & 
+                                      (wavemeter_df['time_seconds'] <= time_max)]
+        
+        temp_df = self.align_with_temperature(wavemeter_df, temp_df)
+        temp_df = temp_df[(temp_df['Time_seconds'] >= time_min) & 
+                          (temp_df['Time_seconds'] <= time_max)]
+        
+        tile_ids = sorted(wavemeter_df['tile_id'].unique())
+        
+        params = [
+            ('laser_dac_value', 'Laser DAC'),
+            ('voa_dac_value', 'VOA DAC'),
+            ('temp_pic_C', 'TPIC (°C)'),
+            ('temp_mux_C', 'TMUX (°C)'),
+            ('temp_pmic_C', 'TPMIC (°C)')
+        ]
+        
+        colors_a = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
+        colors_b = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
+        
+        for tile_id in tile_ids:
+            tile_data = wavemeter_df[wavemeter_df['tile_id'] == tile_id]
+            
+            fig, axes = plt.subplots(5, 1, figsize=(16, 18))
+            
+            for param_idx, (param_col, param_label) in enumerate(params):
+                ax = axes[param_idx]
+                ax2 = ax.twinx()
+                
+                for bank_type in ['BANK_A', 'BANK_B']:
+                    bank_data = tile_data[tile_data['bank_type'] == bank_type]
+                    
+                    colors = colors_a if bank_type == 'BANK_A' else colors_b
+                    bank_label = 'A' if bank_type == 'BANK_A' else 'B'
+                    
+                    if param_col.startswith('temp_'):
+                        time_list = []
+                        value_list = []
+                        for idx, row in bank_data.iterrows():
+                            time_hours = row['time_seconds'] / 3600.0
+                            param_value = row[param_col]
+                            time_list.append(time_hours)
+                            value_list.append(param_value)
+                        
+                        if len(time_list) > 0:
+                            ax.plot(time_list, value_list, color=colors[0], linewidth=1.2, alpha=0.7,
+                                   label=f'B{bank_label}', marker='o', markersize=2)
+                    else:
+                        channel_data = {i: {'time': [], 'value': []} for i in range(8)}
+                        
+                        for idx, row in bank_data.iterrows():
+                            time_hours = row['time_seconds'] / 3600.0
+                            param_values = np.array(row[param_col])
+                            if len(param_values) > 1:
+                                param_values = param_values[1:]
+                                
+                                for ch_idx, p in enumerate(param_values):
+                                    if ch_idx < 8:
+                                        channel_data[ch_idx]['time'].append(time_hours)
+                                        channel_data[ch_idx]['value'].append(p)
+                        
+                        for ch_idx in range(8):
+                            if len(channel_data[ch_idx]['time']) > 0:
+                                ax.plot(channel_data[ch_idx]['time'], channel_data[ch_idx]['value'],
+                                       color=colors[ch_idx], linewidth=0.8, alpha=0.7,
+                                       label=f'B{bank_label}-Ch{ch_idx}', marker='o', markersize=1.5)
+                
+                # Plot temperature on second y-axis
+                temp_hours = temp_df['Time_seconds'].values / 3600.0
+                temp_values = temp_df['Temperature_C'].values
+                ax2.plot(temp_hours, temp_values, color='red', linewidth=2, alpha=0.6,
+                        linestyle='--', label='Case Temp')
+                
+                ax.set_xlabel('Time (hours)', fontsize=11)
+                ax.set_ylabel(param_label, fontsize=11, color='black')
+                ax2.set_ylabel('Temperature (°C)', fontsize=11, color='red')
+                ax.set_xlim(48, 50)
+                ax2.tick_params(axis='y', labelcolor='red')
+                
+                ax.set_title(f'Tile {tile_id} - {param_label} vs Time (48-50 hr zoom)',
+                            fontsize=12, fontweight='bold')
+                
+                if param_idx == 0:
+                    lines1, labels1 = ax.get_legend_handles_labels()
+                    lines2, labels2 = ax2.get_legend_handles_labels()
+                    by_label = dict(zip(labels1, lines1))
+                    ax.legend(by_label.values(), by_label.keys(), loc='upper left', fontsize=6, ncol=8)
+                    ax2.legend(lines2, labels2, loc='upper right', fontsize=7)
+                
+                ax.grid(True, alpha=0.3)
+            
+            plt.tight_layout()
+            plot_filename = f'missionmode_operatingpoints_tile{tile_id}_temptest_zoomed.png'
+            plt.savefig(self.test2_path / plot_filename, dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            print(f"  ✓ Tile {tile_id}: {plot_filename}")
+        
+        print(f"\nCompleted zoomed operating points plots for {len(tile_ids)} tiles\n")
+    
     def run_all_plots(self):
         """Generate all mission mode plots."""
         print("\n" + "=" * 80)
         print("GENERATING ALL MISSION MODE PLOTS - TEST 2")
         print("=" * 80 + "\n")
         
+        # Full time range plots with 1-minute sampling
         self.plot_missionmode_power()
         self.plot_missionmode_freqerror()
         self.plot_missionmode_operatingpoints()
+        
+        # Zoomed plots (48-50 hr) with all data points and temperature overlay
+        print("\n" + "=" * 80)
+        print("GENERATING ZOOMED PLOTS (48-50 hr window with temperature overlay)")
+        print("=" * 80 + "\n")
+        
+        self.plot_missionmode_power_zoomed()
+        self.plot_missionmode_freqerror_zoomed()
+        self.plot_missionmode_operatingpoints_zoomed()
         
         print("=" * 80)
         print("All plots completed!")
