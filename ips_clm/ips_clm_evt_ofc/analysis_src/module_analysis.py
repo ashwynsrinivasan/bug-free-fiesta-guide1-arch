@@ -4085,6 +4085,10 @@ class temperature_aggressors_2:
             ax.set_ylabel('Optical Power (dBm)', fontsize=9)
             ax.set_ylim(9, 13)
             
+            # Add Endeavour power specs
+            ax.axhline(y=10.0, color='blue', linestyle='--', linewidth=1.5, alpha=0.7, label='Endeavour Min (10 dBm)')
+            ax.axhline(y=12.3, color='red', linestyle='--', linewidth=1.5, alpha=0.7, label='Endeavour Max (12.3 dBm)')
+            
             ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
             ax.tick_params(labelsize=8)
             ax.grid(True, alpha=0.3)
@@ -4092,7 +4096,7 @@ class temperature_aggressors_2:
             # Add legend
             handles, labels = ax.get_legend_handles_labels()
             by_label = dict(zip(labels, handles))
-            ax.legend(by_label.values(), by_label.keys(), loc='best', fontsize=6, ncol=2)
+            ax.legend(by_label.values(), by_label.keys(), loc='best', fontsize=5, ncol=2)
         
         # Hide unused subplots
         for plot_idx in range(len(tile_ids), 16):
@@ -4246,9 +4250,12 @@ class temperature_aggressors_2:
                         ref_freq_thz = c_speed_light / ref_wl_subset
                         freq_error_ghz = (measured_freq_thz - ref_freq_thz) * 1000
                         
-                        # Store data for each channel (no frequency filtering)
-                        for ch_idx, f in enumerate(freq_error_ghz):
-                            if ch_idx < 8:  # Only 8 channels
+                        # Filter out frequency errors beyond ±100 GHz (removes outliers)
+                        valid_freq_mask = np.abs(freq_error_ghz) < 100
+                        
+                        # Store data for each channel
+                        for ch_idx, (f, valid) in enumerate(zip(freq_error_ghz, valid_freq_mask)):
+                            if ch_idx < 8 and valid:  # Only 8 channels, filter outliers
                                 channel_data[ch_idx]['time'].append(time_hours)
                                 channel_data[ch_idx]['freq_error'].append(f)
                 
@@ -4479,6 +4486,10 @@ class temperature_aggressors_2:
             ax.set_xlim(46, 48)
             ax2.tick_params(axis='y', labelcolor='red')
             
+            # Add Endeavour power specs
+            ax.axhline(y=10.0, color='blue', linestyle='--', linewidth=1.5, alpha=0.7, label='Endeavour Min (10 dBm)')
+            ax.axhline(y=12.3, color='red', linestyle='--', linewidth=1.5, alpha=0.7, label='Endeavour Max (12.3 dBm)')
+            
             ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
             ax.tick_params(labelsize=8)
             ax.grid(True, alpha=0.3)
@@ -4487,7 +4498,7 @@ class temperature_aggressors_2:
             lines1, labels1 = ax.get_legend_handles_labels()
             lines2, labels2 = ax2.get_legend_handles_labels()
             by_label = dict(zip(labels1, lines1))
-            ax.legend(by_label.values(), by_label.keys(), loc='upper left', fontsize=5, ncol=2)
+            ax.legend(by_label.values(), by_label.keys(), loc='upper left', fontsize=4, ncol=2)
             ax2.legend(lines2, labels2, loc='upper right', fontsize=6)
         
         # Hide unused subplots
@@ -4603,9 +4614,12 @@ class temperature_aggressors_2:
                         ref_freq_thz = c_speed_light / ref_wl_subset
                         freq_error_ghz = (measured_freq_thz - ref_freq_thz) * 1000
                         
-                        # Store data for each channel (no frequency filtering)
-                        for ch_idx, f in enumerate(freq_error_ghz):
-                            if ch_idx < 8:
+                        # Filter out frequency errors beyond ±100 GHz (removes outliers)
+                        valid_freq_mask = np.abs(freq_error_ghz) < 100
+                        
+                        # Store data for each channel
+                        for ch_idx, (f, valid) in enumerate(zip(freq_error_ghz, valid_freq_mask)):
+                            if ch_idx < 8 and valid:  # Filter outliers
                                 channel_data[ch_idx]['time'].append(time_hours)
                                 channel_data[ch_idx]['freq_error'].append(f)
                 
