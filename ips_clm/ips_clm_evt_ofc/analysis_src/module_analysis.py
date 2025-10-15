@@ -3954,8 +3954,8 @@ class temperature_aggressors_2:
         return df
     
     def subsample_to_hourly(self, df):
-        """Subsample data to 1-hour intervals to reduce data volume."""
-        print("\nSubsampling data to 1-hour intervals...")
+        """Subsample data to 10-minute intervals to reduce data volume."""
+        print("\nSubsampling data to 10-minute intervals...")
         print(f"  Original data: {len(df)} rows")
         
         # Set timestamp as index for resampling
@@ -3964,11 +3964,11 @@ class temperature_aggressors_2:
         # Group by tile and bank, then resample each group
         subsampled_groups = []
         for (tile_id, bank_type), group in df.groupby(['tile_id', 'bank_type']):
-            # Resample to hourly intervals, taking the first sample in each hour
-            hourly = group.resample('1H').first()
-            # Remove any NaN rows (hours with no data)
-            hourly = hourly.dropna(subset=['time_seconds'])
-            subsampled_groups.append(hourly)
+            # Resample to 10-minute intervals, taking the first sample in each interval
+            resampled = group.resample('10T').first()  # '10T' means 10 minutes
+            # Remove any NaN rows (intervals with no data)
+            resampled = resampled.dropna(subset=['time_seconds'])
+            subsampled_groups.append(resampled)
         
         # Concatenate all groups
         df_subsampled = pd.concat(subsampled_groups).reset_index()
@@ -4047,8 +4047,14 @@ class temperature_aggressors_2:
             for bank_type in ['BANK_A', 'BANK_B']:
                 bank_data = tile_data[tile_data['bank_type'] == bank_type]
                 
+                colors = colors_a if bank_type == 'BANK_A' else colors_b
+                bank_label = 'A' if bank_type == 'BANK_A' else 'B'
+                
+                # Collect data for each channel to plot as lines
+                channel_data = {i: {'time': [], 'power': []} for i in range(8)}
+                
                 for idx, row in bank_data.iterrows():
-                    time_sec = row['time_seconds']
+                    time_hours = row['time_seconds'] / 3600.0  # Convert to hours
                     # Use pic_mpd_value (in µW) and convert to dBm
                     power_uw = np.array(row['pic_mpd_value'])
                     # Skip if first element (seems to be a placeholder)
@@ -4056,20 +4062,21 @@ class temperature_aggressors_2:
                         power_uw = power_uw[1:]  # Skip first element
                         power_dbm = 10 * np.log10(power_uw / 1000.0)
                         
-                        # Create time array for this measurement
-                        time_array = np.full(len(power_dbm), time_sec)
-                        
-                        colors = colors_a if bank_type == 'BANK_A' else colors_b
-                        bank_label = 'A' if bank_type == 'BANK_A' else 'B'
-                        
-                        # Plot each channel
-                        for ch_idx, (t, p) in enumerate(zip(time_array, power_dbm)):
+                        # Store data for each channel
+                        for ch_idx, p in enumerate(power_dbm):
                             if ch_idx < 8:  # Only 8 channels
-                                ax.scatter(t, p, color=colors[ch_idx], s=10, alpha=0.6,
-                                         label=f'B{bank_label}-Ch{ch_idx}' if idx == bank_data.index[0] else '')
+                                channel_data[ch_idx]['time'].append(time_hours)
+                                channel_data[ch_idx]['power'].append(p)
+                
+                # Plot lines for each channel
+                for ch_idx in range(8):
+                    if len(channel_data[ch_idx]['time']) > 0:
+                        ax.plot(channel_data[ch_idx]['time'], channel_data[ch_idx]['power'],
+                               color=colors[ch_idx], linewidth=1.0, alpha=0.7,
+                               label=f'B{bank_label}-Ch{ch_idx}', marker='o', markersize=2)
             
             # Configure axes
-            ax.set_xlabel('Time (seconds)', fontsize=9)
+            ax.set_xlabel('Time (hours)', fontsize=9)
             ax.set_ylabel('Optical Power (dBm)', fontsize=9)
             ax.set_ylim(9, 13)
             
@@ -4195,8 +4202,14 @@ class temperature_aggressors_2:
                 
                 ref_wl = ref_wavelengths[bank_type]
                 
+                colors = colors_a if bank_type == 'BANK_A' else colors_b
+                bank_label = 'A' if bank_type == 'BANK_A' else 'B'
+                
+                # Collect data for each channel to plot as lines
+                channel_data = {i: {'time': [], 'freq_error': []} for i in range(8)}
+                
                 for idx, row in bank_data.iterrows():
-                    time_sec = row['time_seconds']
+                    time_hours = row['time_seconds'] / 3600.0  # Convert to hours
                     wavelengths_raw = np.array(row['wavelength_nm'])
                     
                     if len(wavelengths_raw) > 1:
@@ -4222,20 +4235,21 @@ class temperature_aggressors_2:
                         ref_freq_thz = c_speed_light / ref_wl_subset
                         freq_error_ghz = (measured_freq_thz - ref_freq_thz) * 1000
                         
-                        # Create time array for this measurement
-                        time_array = np.full(len(freq_error_ghz), time_sec)
-                        
-                        colors = colors_a if bank_type == 'BANK_A' else colors_b
-                        bank_label = 'A' if bank_type == 'BANK_A' else 'B'
-                        
-                        # Plot each channel
-                        for ch_idx, (t, f) in enumerate(zip(time_array, freq_error_ghz)):
+                        # Store data for each channel
+                        for ch_idx, f in enumerate(freq_error_ghz):
                             if ch_idx < 8:  # Only 8 channels
-                                ax.scatter(t, f, color=colors[ch_idx], s=10, alpha=0.6,
-                                         label=f'B{bank_label}-Ch{ch_idx}' if idx == bank_data.index[0] else '')
+                                channel_data[ch_idx]['time'].append(time_hours)
+                                channel_data[ch_idx]['freq_error'].append(f)
+                
+                # Plot lines for each channel
+                for ch_idx in range(8):
+                    if len(channel_data[ch_idx]['time']) > 0:
+                        ax.plot(channel_data[ch_idx]['time'], channel_data[ch_idx]['freq_error'],
+                               color=colors[ch_idx], linewidth=1.0, alpha=0.7,
+                               label=f'B{bank_label}-Ch{ch_idx}', marker='o', markersize=2)
             
             # Configure axes
-            ax.set_xlabel('Time (seconds)', fontsize=9)
+            ax.set_xlabel('Time (hours)', fontsize=9)
             ax.set_ylabel('Frequency Error (GHz)', fontsize=9)
             
             # Add spec limits (±20 GHz)
@@ -4307,34 +4321,47 @@ class temperature_aggressors_2:
                 for bank_type in ['BANK_A', 'BANK_B']:
                     bank_data = tile_data[tile_data['bank_type'] == bank_type]
                     
-                    for idx, row in bank_data.iterrows():
-                        time_sec = row['time_seconds']
-                        
-                        # Handle scalar vs array parameters
-                        if param_col.startswith('temp_'):
-                            # Temperature sensors are scalar values
+                    colors = colors_a if bank_type == 'BANK_A' else colors_b
+                    bank_label = 'A' if bank_type == 'BANK_A' else 'B'
+                    
+                    # Handle scalar vs array parameters
+                    if param_col.startswith('temp_'):
+                        # Temperature sensors are scalar values - collect as time series
+                        time_list = []
+                        value_list = []
+                        for idx, row in bank_data.iterrows():
+                            time_hours = row['time_seconds'] / 3600.0
                             param_value = row[param_col]
-                            colors = colors_a if bank_type == 'BANK_A' else colors_b
-                            bank_label = 'A' if bank_type == 'BANK_A' else 'B'
-                            ax.scatter(time_sec, param_value, color=colors[0], s=20, alpha=0.6,
-                                     label=f'B{bank_label}' if idx == bank_data.index[0] else '')
-                        else:
-                            # DAC values are arrays
+                            time_list.append(time_hours)
+                            value_list.append(param_value)
+                        
+                        if len(time_list) > 0:
+                            ax.plot(time_list, value_list, color=colors[0], linewidth=1.5, alpha=0.7,
+                                   label=f'B{bank_label}', marker='o', markersize=3)
+                    else:
+                        # DAC values are arrays - collect data for each channel
+                        channel_data = {i: {'time': [], 'value': []} for i in range(8)}
+                        
+                        for idx, row in bank_data.iterrows():
+                            time_hours = row['time_seconds'] / 3600.0
                             param_values = np.array(row[param_col])
                             if len(param_values) > 1:
                                 param_values = param_values[1:]  # Skip first element
                                 
-                                time_array = np.full(len(param_values), time_sec)
-                                colors = colors_a if bank_type == 'BANK_A' else colors_b
-                                bank_label = 'A' if bank_type == 'BANK_A' else 'B'
-                                
-                                for ch_idx, (t, p) in enumerate(zip(time_array, param_values)):
+                                for ch_idx, p in enumerate(param_values):
                                     if ch_idx < 8:
-                                        ax.scatter(t, p, color=colors[ch_idx], s=20, alpha=0.6,
-                                                 label=f'B{bank_label}-Ch{ch_idx}' if idx == bank_data.index[0] else '')
+                                        channel_data[ch_idx]['time'].append(time_hours)
+                                        channel_data[ch_idx]['value'].append(p)
+                        
+                        # Plot lines for each channel
+                        for ch_idx in range(8):
+                            if len(channel_data[ch_idx]['time']) > 0:
+                                ax.plot(channel_data[ch_idx]['time'], channel_data[ch_idx]['value'],
+                                       color=colors[ch_idx], linewidth=1.0, alpha=0.7,
+                                       label=f'B{bank_label}-Ch{ch_idx}', marker='o', markersize=2)
                 
                 # Configure axes
-                ax.set_xlabel('Time (seconds)', fontsize=11)
+                ax.set_xlabel('Time (hours)', fontsize=11)
                 ax.set_ylabel(param_label, fontsize=11)
                 
                 ax.set_title(f'Tile {tile_id} - {param_label} vs Time',
