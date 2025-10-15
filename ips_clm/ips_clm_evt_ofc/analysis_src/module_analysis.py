@@ -4005,8 +4005,12 @@ class temperature_aggressors_2:
         return df
     
     def align_with_temperature(self, wavemeter_df, temp_df):
-        """Align temperature data with wavemeter timestamps."""
-        # Use wavemeter reference time
+        """Align temperature data with wavemeter timestamps.
+        
+        Note: This aligns based on the first timestamp in wavemeter_df, which should 
+        be the FULL dataset start time, not a filtered subset.
+        """
+        # Use wavemeter reference time (should be from full dataset)
         ref_start = wavemeter_df['timestamp'].iloc[0]
         temp_df['Time_seconds'] = (temp_df['Timestamp'] - ref_start).dt.total_seconds()
         
@@ -4224,6 +4228,12 @@ class temperature_aggressors_2:
                         # Convert to nm by DIVIDING by 1e9 (raw ~1.3e12 -> ~1300 nm)
                         wavelengths_nm = wavelengths_raw / 1e9
                         
+                        # Additional filtering: remove unrealistic wavelengths (should be 1200-1400 nm)
+                        realistic_mask = (wavelengths_nm >= 1200) & (wavelengths_nm <= 1400)
+                        if not realistic_mask.any():
+                            continue
+                        wavelengths_nm = wavelengths_nm[realistic_mask]
+                        
                         # Ensure wavelengths and ref_wl have same length
                         min_len = min(len(wavelengths_nm), len(ref_wl))
                         wavelengths_nm = wavelengths_nm[:min_len]
@@ -4235,9 +4245,13 @@ class temperature_aggressors_2:
                         ref_freq_thz = c_speed_light / ref_wl_subset
                         freq_error_ghz = (measured_freq_thz - ref_freq_thz) * 1000
                         
+                        # Filter out frequency errors beyond reasonable bounds (±100 GHz)
+                        # This removes 400 GHz outliers
+                        valid_freq_mask = np.abs(freq_error_ghz) < 100
+                        
                         # Store data for each channel
-                        for ch_idx, f in enumerate(freq_error_ghz):
-                            if ch_idx < 8:  # Only 8 channels
+                        for ch_idx, (f, valid) in enumerate(zip(freq_error_ghz, valid_freq_mask)):
+                            if ch_idx < 8 and valid:  # Only 8 channels and valid freq errors
                                 channel_data[ch_idx]['time'].append(time_hours)
                                 channel_data[ch_idx]['freq_error'].append(f)
                 
@@ -4389,19 +4403,20 @@ class temperature_aggressors_2:
         print("Plotting zoomed mission mode power (46-48 hr) with temperature overlay...")
         
         # Load data (without subsampling for zoomed view)
-        wavemeter_df = self.load_wavemeter_data()
+        wavemeter_df_full = self.load_wavemeter_data()
         temp_df = self.load_temperature_data()
-        if wavemeter_df is None or temp_df is None:
+        if wavemeter_df_full is None or temp_df is None:
             return
         
-        # Filter data to 46-48 hour window
+        # Align temperature data using FULL wavemeter dataset (before filtering)
+        ref_start = wavemeter_df_full['timestamp'].iloc[0]
+        temp_df['Time_seconds'] = (temp_df['Timestamp'] - ref_start).dt.total_seconds()
+        
+        # Filter data to 46-48 hour window AFTER alignment
         time_min = 46 * 3600  # 46 hours in seconds
         time_max = 48 * 3600  # 48 hours in seconds
-        wavemeter_df = wavemeter_df[(wavemeter_df['time_seconds'] >= time_min) & 
-                                      (wavemeter_df['time_seconds'] <= time_max)]
-        
-        # Align temperature data
-        temp_df = self.align_with_temperature(wavemeter_df, temp_df)
+        wavemeter_df = wavemeter_df_full[(wavemeter_df_full['time_seconds'] >= time_min) & 
+                                           (wavemeter_df_full['time_seconds'] <= time_max)]
         temp_df = temp_df[(temp_df['Time_seconds'] >= time_min) & 
                           (temp_df['Time_seconds'] <= time_max)]
         
@@ -4496,19 +4511,38 @@ class temperature_aggressors_2:
         print("Plotting zoomed mission mode frequency error (46-48 hr) with temperature overlay...")
         
         # Load data (without subsampling)
-        wavemeter_df = self.load_wavemeter_data()
+        wavemeter_df_full = self.load_wavemeter_data()
         temp_df = self.load_temperature_data()
-        if wavemeter_df is None or temp_df is None:
+        if wavemeter_df_full is None or temp_df is None:
             return
         
-        # Filter data to 46-48 hour window
+        # Load reference wavelengths from FULL dataset (cycle 0) for all tiles
+        print("  Loading reference wavelengths from cycle 0...")
+        ref_wavelengths_all = {}
+        for tile_id in sorted(wavemeter_df_full['tile_id'].unique()):
+            ref_wavelengths_all[tile_id] = {}
+            tile_data_full = wavemeter_df_full[wavemeter_df_full['tile_id'] == tile_id]
+            cycle_0_data = tile_data_full[tile_data_full['cycle_number'] == 0]
+            for idx, row in cycle_0_data.iterrows():
+                bank_type = row['bank_type']
+                wavelengths_raw = np.array(row['wavelength_nm'])
+                if len(wavelengths_raw) > 1:
+                    wavelengths_raw = wavelengths_raw[1:]
+                    valid_mask = wavelengths_raw > 1e12
+                    if valid_mask.any():
+                        wavelengths_raw = wavelengths_raw[valid_mask]
+                        wavelengths_nm = wavelengths_raw / 1e9
+                        ref_wavelengths_all[tile_id][bank_type] = wavelengths_nm
+        
+        # Filter data to 46-48 hour window AFTER loading references
         time_min = 46 * 3600
         time_max = 48 * 3600
-        wavemeter_df = wavemeter_df[(wavemeter_df['time_seconds'] >= time_min) & 
-                                      (wavemeter_df['time_seconds'] <= time_max)]
+        wavemeter_df = wavemeter_df_full[(wavemeter_df_full['time_seconds'] >= time_min) & 
+                                           (wavemeter_df_full['time_seconds'] <= time_max)]
         
-        # Align temperature data
-        temp_df = self.align_with_temperature(wavemeter_df, temp_df)
+        # Align temperature data using the FULL wavemeter dataset start time
+        ref_start = wavemeter_df_full['timestamp'].iloc[0]
+        temp_df['Time_seconds'] = (temp_df['Timestamp'] - ref_start).dt.total_seconds()
         temp_df = temp_df[(temp_df['Time_seconds'] >= time_min) & 
                           (temp_df['Time_seconds'] <= time_max)]
         
@@ -4519,6 +4553,8 @@ class temperature_aggressors_2:
         fig, axes = plt.subplots(8, 2, figsize=(16, 32))
         axes = axes.flatten()
         
+        c_speed_light = 299792.458
+        
         for plot_idx, tile_id in enumerate(tile_ids):
             if plot_idx >= 16:
                 break
@@ -4528,21 +4564,8 @@ class temperature_aggressors_2:
             
             tile_data = wavemeter_df[wavemeter_df['tile_id'] == tile_id]
             
-            # Load reference wavelengths
-            ref_wavelengths = {}
-            cycle_0_data = tile_data[tile_data['cycle_number'] == 0]
-            for idx, row in cycle_0_data.iterrows():
-                bank_type = row['bank_type']
-                wavelengths_raw = np.array(row['wavelength_nm'])
-                if len(wavelengths_raw) > 1:
-                    wavelengths_raw = wavelengths_raw[1:]
-                    valid_mask = wavelengths_raw > 1e12
-                    if valid_mask.any():
-                        wavelengths_raw = wavelengths_raw[valid_mask]
-                        wavelengths_nm = wavelengths_raw / 1e9
-                        ref_wavelengths[bank_type] = wavelengths_nm
-            
-            c_speed_light = 299792.458
+            # Get reference wavelengths for this tile from pre-loaded data
+            ref_wavelengths = ref_wavelengths_all.get(tile_id, {})
             
             for bank_type in ['BANK_A', 'BANK_B']:
                 bank_data = tile_data[tile_data['bank_type'] == bank_type]
@@ -4569,6 +4592,12 @@ class temperature_aggressors_2:
                         wavelengths_raw = wavelengths_raw[valid_mask]
                         wavelengths_nm = wavelengths_raw / 1e9
                         
+                        # Additional filtering: remove unrealistic wavelengths (should be 1200-1400 nm)
+                        realistic_mask = (wavelengths_nm >= 1200) & (wavelengths_nm <= 1400)
+                        if not realistic_mask.any():
+                            continue
+                        wavelengths_nm = wavelengths_nm[realistic_mask]
+                        
                         min_len = min(len(wavelengths_nm), len(ref_wl))
                         wavelengths_nm = wavelengths_nm[:min_len]
                         ref_wl_subset = ref_wl[:min_len]
@@ -4577,8 +4606,11 @@ class temperature_aggressors_2:
                         ref_freq_thz = c_speed_light / ref_wl_subset
                         freq_error_ghz = (measured_freq_thz - ref_freq_thz) * 1000
                         
-                        for ch_idx, f in enumerate(freq_error_ghz):
-                            if ch_idx < 8:
+                        # Filter out frequency errors beyond reasonable bounds (±100 GHz)
+                        valid_freq_mask = np.abs(freq_error_ghz) < 100
+                        
+                        for ch_idx, (f, valid) in enumerate(zip(freq_error_ghz, valid_freq_mask)):
+                            if ch_idx < 8 and valid:
                                 channel_data[ch_idx]['time'].append(time_hours)
                                 channel_data[ch_idx]['freq_error'].append(f)
                 
@@ -4630,18 +4662,20 @@ class temperature_aggressors_2:
         print("Plotting zoomed mission mode operating points (46-48 hr) for all tiles...")
         
         # Load data
-        wavemeter_df = self.load_wavemeter_data()
+        wavemeter_df_full = self.load_wavemeter_data()
         temp_df = self.load_temperature_data()
-        if wavemeter_df is None or temp_df is None:
+        if wavemeter_df_full is None or temp_df is None:
             return
         
-        # Filter to 46-48 hour window
+        # Align temperature data using FULL wavemeter dataset
+        ref_start = wavemeter_df_full['timestamp'].iloc[0]
+        temp_df['Time_seconds'] = (temp_df['Timestamp'] - ref_start).dt.total_seconds()
+        
+        # Filter to 46-48 hour window AFTER alignment
         time_min = 46 * 3600
         time_max = 48 * 3600
-        wavemeter_df = wavemeter_df[(wavemeter_df['time_seconds'] >= time_min) & 
-                                      (wavemeter_df['time_seconds'] <= time_max)]
-        
-        temp_df = self.align_with_temperature(wavemeter_df, temp_df)
+        wavemeter_df = wavemeter_df_full[(wavemeter_df_full['time_seconds'] >= time_min) & 
+                                           (wavemeter_df_full['time_seconds'] <= time_max)]
         temp_df = temp_df[(temp_df['Time_seconds'] >= time_min) & 
                           (temp_df['Time_seconds'] <= time_max)]
         
