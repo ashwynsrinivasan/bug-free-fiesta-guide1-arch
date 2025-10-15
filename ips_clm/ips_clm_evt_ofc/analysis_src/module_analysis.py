@@ -3955,8 +3955,8 @@ class temperature_aggressors_2:
         return df
     
     def subsample_to_hourly(self, df):
-        """Subsample data to 1-minute intervals to reduce data volume."""
-        print("\nSubsampling data to 1-minute intervals...")
+        """Subsample data to 10-minute intervals to reduce data volume."""
+        print("\nSubsampling data to 10-minute intervals...")
         print(f"  Original data: {len(df)} rows")
         
         # Set timestamp as index for resampling
@@ -3965,8 +3965,8 @@ class temperature_aggressors_2:
         # Group by tile and bank, then resample each group
         subsampled_groups = []
         for (tile_id, bank_type), group in df.groupby(['tile_id', 'bank_type']):
-            # Resample to 1-minute intervals, taking the first sample in each interval
-            resampled = group.resample('1T').first()  # '1T' means 1 minute
+            # Resample to 10-minute intervals, taking the first sample in each interval
+            resampled = group.resample('10T').first()  # '10T' means 10 minutes
             # Remove any NaN rows (intervals with no data)
             resampled = resampled.dropna(subset=['time_seconds'])
             subsampled_groups.append(resampled)
