@@ -4790,9 +4790,9 @@ class temperature_aggressors_2:
         
         print(f"\nCompleted zoomed operating points plots for {len(tile_ids)} tiles\n")
     
-    def subsample_to_15min(self, df):
-        """Subsample data to 15-minute intervals for delta plots."""
-        print("\nSubsampling data to 15-minute intervals...")
+    def subsample_to_5min(self, df):
+        """Subsample data to 5-minute intervals for delta plots."""
+        print("\nSubsampling data to 5-minute intervals...")
         print(f"  Original data: {len(df)} rows")
         
         # Set timestamp as index for resampling
@@ -4801,8 +4801,8 @@ class temperature_aggressors_2:
         # Group by tile and bank, then resample each group
         subsampled_groups = []
         for (tile_id, bank_type), group in df.groupby(['tile_id', 'bank_type']):
-            # Resample to 15-minute intervals, taking the first sample in each interval
-            resampled = group.resample('15T').first()  # '15T' means 15 minutes
+            # Resample to 5-minute intervals, taking the first sample in each interval
+            resampled = group.resample('5T').first()  # '5T' means 5 minutes
             # Remove any NaN rows (intervals with no data)
             resampled = resampled.dropna(subset=['time_seconds'])
             subsampled_groups.append(resampled)
@@ -4824,8 +4824,8 @@ class temperature_aggressors_2:
         if wavemeter_df is None:
             return
         
-        # Subsample to 15-minute intervals
-        wavemeter_df = self.subsample_to_15min(wavemeter_df)
+        # Subsample to 5-minute intervals
+        wavemeter_df = self.subsample_to_5min(wavemeter_df)
         
         # Get all unique tiles
         tile_ids = sorted(wavemeter_df['tile_id'].unique())
@@ -4934,8 +4934,8 @@ class temperature_aggressors_2:
         if wavemeter_df is None:
             return
         
-        # Subsample to 15-minute intervals
-        wavemeter_df = self.subsample_to_15min(wavemeter_df)
+        # Subsample to 5-minute intervals
+        wavemeter_df = self.subsample_to_5min(wavemeter_df)
         
         # Get all unique tiles
         tile_ids = sorted(wavemeter_df['tile_id'].unique())
