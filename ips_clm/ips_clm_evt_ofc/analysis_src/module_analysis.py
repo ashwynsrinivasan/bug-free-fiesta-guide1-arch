@@ -3912,7 +3912,8 @@ class temperature_aggressors_2:
         
         # Data files
         self.wavemeter_file = self.data_path / "optical_wavemeter_loop_20251010T213800367Z_e7390a1b-5b91-42b7-ad23-f00f82fc19a2.csv"
-        self.temp_log_file = self.data_path / "temperature_log_20251009_One tile data with Temp Cycle.csv"
+        self.temp_log_file1 = self.data_path / "temperature_log_20251013_004250.csv"
+        self.temp_log_file2 = self.data_path / "temperature_log_20251014_150929.csv"
         
         print("=" * 80)
         print("Temperature Aggressors Test 2 - Analysis")
@@ -3952,15 +3953,54 @@ class temperature_aggressors_2:
         
         return df
     
+    def subsample_to_hourly(self, df):
+        """Subsample data to 1-hour intervals to reduce data volume."""
+        print("\nSubsampling data to 1-hour intervals...")
+        print(f"  Original data: {len(df)} rows")
+        
+        # Set timestamp as index for resampling
+        df = df.set_index('timestamp')
+        
+        # Group by tile and bank, then resample each group
+        subsampled_groups = []
+        for (tile_id, bank_type), group in df.groupby(['tile_id', 'bank_type']):
+            # Resample to hourly intervals, taking the first sample in each hour
+            hourly = group.resample('1H').first()
+            # Remove any NaN rows (hours with no data)
+            hourly = hourly.dropna(subset=['time_seconds'])
+            subsampled_groups.append(hourly)
+        
+        # Concatenate all groups
+        df_subsampled = pd.concat(subsampled_groups).reset_index()
+        
+        print(f"  Subsampled data: {len(df_subsampled)} rows")
+        print(f"  Reduction: {len(df)/len(df_subsampled):.1f}x")
+        
+        return df_subsampled
+    
     def load_temperature_data(self):
-        """Load temperature log CSV data."""
-        if not self.temp_log_file.exists():
-            print(f"Error: Temperature log file not found: {self.temp_log_file}")
+        """Load and concatenate temperature log CSV data from both files."""
+        if not self.temp_log_file1.exists():
+            print(f"Error: Temperature log file 1 not found: {self.temp_log_file1}")
+            return None
+        if not self.temp_log_file2.exists():
+            print(f"Error: Temperature log file 2 not found: {self.temp_log_file2}")
             return None
         
-        # Read CSV
-        df = pd.read_csv(self.temp_log_file)
-        df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+        print("Loading temperature data from both log files...")
+        # Read both CSV files
+        df1 = pd.read_csv(self.temp_log_file1)
+        df1['Timestamp'] = pd.to_datetime(df1['Timestamp'])
+        
+        df2 = pd.read_csv(self.temp_log_file2)
+        df2['Timestamp'] = pd.to_datetime(df2['Timestamp'])
+        
+        # Concatenate and sort by timestamp
+        df = pd.concat([df1, df2], ignore_index=True)
+        df = df.sort_values('Timestamp').reset_index(drop=True)
+        
+        print(f"  Loaded {len(df)} temperature readings")
+        print(f"  Time range: {df['Timestamp'].min()} to {df['Timestamp'].max()}")
         
         return df
     
@@ -3980,6 +4020,9 @@ class temperature_aggressors_2:
         wavemeter_df = self.load_wavemeter_data()
         if wavemeter_df is None:
             return
+        
+        # Subsample to hourly intervals
+        wavemeter_df = self.subsample_to_hourly(wavemeter_df)
         
         # Get all unique tiles
         tile_ids = sorted(wavemeter_df['tile_id'].unique())
@@ -4098,6 +4141,9 @@ class temperature_aggressors_2:
         wavemeter_df = self.load_wavemeter_data()
         if wavemeter_df is None:
             return
+        
+        # Subsample to hourly intervals
+        wavemeter_df = self.subsample_to_hourly(wavemeter_df)
         
         # Get all unique tiles
         tile_ids = sorted(wavemeter_df['tile_id'].unique())
@@ -4228,6 +4274,9 @@ class temperature_aggressors_2:
         wavemeter_df = self.load_wavemeter_data()
         if wavemeter_df is None:
             return
+        
+        # Subsample to hourly intervals
+        wavemeter_df = self.subsample_to_hourly(wavemeter_df)
         
         # Get all unique tiles
         tile_ids = sorted(wavemeter_df['tile_id'].unique())
