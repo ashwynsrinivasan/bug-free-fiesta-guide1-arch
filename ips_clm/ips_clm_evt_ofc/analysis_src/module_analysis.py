@@ -4018,7 +4018,7 @@ class temperature_aggressors_2:
         return temp_df
     
     def plot_missionmode_power(self):
-        """Plot optical power vs time for all tiles in a 2x8 grid."""
+        """Plot optical power vs time for all tiles in a 4x4 grid."""
         print("Plotting mission mode power for all tiles...")
         
         # Load data
@@ -4036,8 +4036,8 @@ class temperature_aggressors_2:
         colors_a = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
         colors_b = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
         
-        # Create figure with 8x2 subplots (8 rows, 2 columns)
-        fig, axes = plt.subplots(8, 2, figsize=(16, 32))
+        # Create figure with 4x4 subplots
+        fig, axes = plt.subplots(4, 4, figsize=(24, 24))
         axes = axes.flatten()
         
         # Plot each tile in a separate subplot
@@ -4084,10 +4084,13 @@ class temperature_aggressors_2:
             ax.set_xlabel('Time (hours)', fontsize=9)
             ax.set_ylabel('Optical Power (dBm)', fontsize=9)
             ax.set_ylim(9, 13)
+            ax.set_xlim(0, 96)
+            ax.set_xticks(np.arange(0, 97, 12))
             
-            # Add Endeavour power specs
-            ax.axhline(y=10.0, color='blue', linestyle='--', linewidth=1.5, alpha=0.7, label='Endeavour Min (10 dBm)')
+            # Add Endeavour power specs (both in red with shaded region)
+            ax.axhline(y=10.0, color='red', linestyle='--', linewidth=1.5, alpha=0.7, label='Endeavour Min (10 dBm)')
             ax.axhline(y=12.3, color='red', linestyle='--', linewidth=1.5, alpha=0.7, label='Endeavour Max (12.3 dBm)')
+            ax.axhspan(10.0, 12.3, color='green', alpha=0.05)
             
             ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
             ax.tick_params(labelsize=8)
@@ -4150,7 +4153,7 @@ class temperature_aggressors_2:
         print()
     
     def plot_missionmode_freqerror(self):
-        """Plot frequency error vs time for all tiles in a 2x8 grid."""
+        """Plot frequency error vs time for all tiles in a 4x4 grid."""
         print("Plotting mission mode frequency error for all tiles...")
         
         # Load data
@@ -4168,8 +4171,8 @@ class temperature_aggressors_2:
         colors_a = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
         colors_b = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
         
-        # Create figure with 8x2 subplots (8 rows, 2 columns)
-        fig, axes = plt.subplots(8, 2, figsize=(16, 32))
+        # Create figure with 4x4 subplots
+        fig, axes = plt.subplots(4, 4, figsize=(24, 24))
         axes = axes.flatten()
         
         # Plot each tile in a separate subplot
@@ -4269,6 +4272,9 @@ class temperature_aggressors_2:
             # Configure axes
             ax.set_xlabel('Time (hours)', fontsize=9)
             ax.set_ylabel('Frequency Error (GHz)', fontsize=9)
+            ax.set_ylim(-50, 50)
+            ax.set_xlim(0, 96)
+            ax.set_xticks(np.arange(0, 97, 12))
             
             # Add spec limits (±20 GHz)
             ax.axhline(y=20, color='red', linestyle=':', linewidth=1.5, alpha=0.5)
@@ -4403,7 +4409,7 @@ class temperature_aggressors_2:
         print(f"\nCompleted operating points plots for {len(tile_ids)} tiles\n")
     
     def plot_missionmode_power_zoomed(self):
-        """Plot optical power vs time for all tiles in a 2x8 grid, zoomed to 46-48 hours with temperature overlay."""
+        """Plot optical power vs time for all tiles in a 4x4 grid, zoomed to 46-48 hours with temperature overlay."""
         print("Plotting zoomed mission mode power (46-48 hr) with temperature overlay...")
         
         # Load data (without subsampling for zoomed view)
@@ -4431,8 +4437,8 @@ class temperature_aggressors_2:
         colors_a = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
         colors_b = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
         
-        # Create figure with 8x2 subplots
-        fig, axes = plt.subplots(8, 2, figsize=(16, 32))
+        # Create figure with 4x4 subplots
+        fig, axes = plt.subplots(4, 4, figsize=(24, 24))
         axes = axes.flatten()
         
         # Plot each tile
@@ -4486,9 +4492,10 @@ class temperature_aggressors_2:
             ax.set_xlim(46, 48)
             ax2.tick_params(axis='y', labelcolor='red')
             
-            # Add Endeavour power specs
-            ax.axhline(y=10.0, color='blue', linestyle='--', linewidth=1.5, alpha=0.7, label='Endeavour Min (10 dBm)')
+            # Add Endeavour power specs (both in red with shaded region)
+            ax.axhline(y=10.0, color='red', linestyle='--', linewidth=1.5, alpha=0.7, label='Endeavour Min (10 dBm)')
             ax.axhline(y=12.3, color='red', linestyle='--', linewidth=1.5, alpha=0.7, label='Endeavour Max (12.3 dBm)')
+            ax.axhspan(10.0, 12.3, color='green', alpha=0.05)
             
             ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
             ax.tick_params(labelsize=8)
@@ -4515,7 +4522,7 @@ class temperature_aggressors_2:
         print(f"  ✓ Zoomed plot saved: {plot_filename}\n")
     
     def plot_missionmode_freqerror_zoomed(self):
-        """Plot frequency error vs time for all tiles in a 2x8 grid, zoomed to 46-48 hours with temperature overlay."""
+        """Plot frequency error vs time for all tiles in a 4x4 grid, zoomed to 46-48 hours with temperature overlay."""
         print("Plotting zoomed mission mode frequency error (46-48 hr) with temperature overlay...")
         
         # Load data (without subsampling)
@@ -4558,7 +4565,7 @@ class temperature_aggressors_2:
         colors_a = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
         colors_b = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
         
-        fig, axes = plt.subplots(8, 2, figsize=(16, 32))
+        fig, axes = plt.subplots(4, 4, figsize=(24, 24))
         axes = axes.flatten()
         
         c_speed_light = 299792.458
@@ -4638,11 +4645,13 @@ class temperature_aggressors_2:
             ax.set_xlabel('Time (hours)', fontsize=9)
             ax.set_ylabel('Frequency Error (GHz)', fontsize=9, color='black')
             ax2.set_ylabel('Temperature (°C)', fontsize=9, color='red')
+            ax.set_ylim(-50, 50)
             ax.set_xlim(46, 48)
             ax2.tick_params(axis='y', labelcolor='red')
             
             ax.axhline(y=20, color='red', linestyle=':', linewidth=1.5, alpha=0.3)
             ax.axhline(y=-20, color='red', linestyle=':', linewidth=1.5, alpha=0.3)
+            ax.axhspan(-20, 20, color='green', alpha=0.05)
             
             ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
             ax.tick_params(labelsize=8)
