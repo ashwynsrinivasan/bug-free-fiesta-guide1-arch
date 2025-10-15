@@ -4790,6 +4790,305 @@ class temperature_aggressors_2:
         
         print(f"\nCompleted zoomed operating points plots for {len(tile_ids)} tiles\n")
     
+    def subsample_to_15min(self, df):
+        """Subsample data to 15-minute intervals for delta plots."""
+        print("\nSubsampling data to 15-minute intervals...")
+        print(f"  Original data: {len(df)} rows")
+        
+        # Set timestamp as index for resampling
+        df = df.set_index('timestamp')
+        
+        # Group by tile and bank, then resample each group
+        subsampled_groups = []
+        for (tile_id, bank_type), group in df.groupby(['tile_id', 'bank_type']):
+            # Resample to 15-minute intervals, taking the first sample in each interval
+            resampled = group.resample('15T').first()  # '15T' means 15 minutes
+            # Remove any NaN rows (intervals with no data)
+            resampled = resampled.dropna(subset=['time_seconds'])
+            subsampled_groups.append(resampled)
+        
+        # Concatenate all groups
+        df_subsampled = pd.concat(subsampled_groups).reset_index()
+        
+        print(f"  Subsampled data: {len(df_subsampled)} rows")
+        print(f"  Reduction: {len(df)/len(df_subsampled):.1f}x")
+        
+        return df_subsampled
+    
+    def plot_missionmode_power_all_tiles_delta(self):
+        """Plot optical power vs time for all tiles with linear fit delta in legend."""
+        print("Plotting mission mode power with delta for all tiles...")
+        
+        # Load data
+        wavemeter_df = self.load_wavemeter_data()
+        if wavemeter_df is None:
+            return
+        
+        # Subsample to 15-minute intervals
+        wavemeter_df = self.subsample_to_15min(wavemeter_df)
+        
+        # Get all unique tiles
+        tile_ids = sorted(wavemeter_df['tile_id'].unique())
+        
+        # Color maps
+        colors_a = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
+        colors_b = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
+        
+        # Create figure with 4x4 subplots
+        fig, axes = plt.subplots(4, 4, figsize=(24, 24))
+        axes = axes.flatten()
+        
+        # Plot each tile in a separate subplot
+        for plot_idx, tile_id in enumerate(tile_ids):
+            if plot_idx >= 16:  # Only plot up to 16 tiles
+                break
+                
+            ax = axes[plot_idx]
+            tile_data = wavemeter_df[wavemeter_df['tile_id'] == tile_id]
+            
+            # Plot both banks
+            for bank_type in ['BANK_A', 'BANK_B']:
+                bank_data = tile_data[tile_data['bank_type'] == bank_type]
+                
+                colors = colors_a if bank_type == 'BANK_A' else colors_b
+                bank_label = 'A' if bank_type == 'BANK_A' else 'B'
+                
+                # Collect data for each channel to plot as lines and calculate delta
+                channel_data = {i: {'time': [], 'power': []} for i in range(8)}
+                
+                for idx, row in bank_data.iterrows():
+                    time_hours = row['time_seconds'] / 3600.0  # Convert to hours
+                    # Use pic_mpd_value (in µW) and convert to dBm
+                    power_uw = np.array(row['pic_mpd_value'])
+                    
+                    if len(power_uw) > 1:
+                        power_uw = power_uw[1:]  # Skip first element
+                        power_dbm = 10 * np.log10(power_uw / 1000.0)
+                        
+                        # Match channel indices
+                        for ch_idx, power_val in enumerate(power_dbm[:8]):  # Only take first 8 channels
+                            if not np.isnan(power_val) and not np.isinf(power_val):
+                                channel_data[ch_idx]['time'].append(time_hours)
+                                channel_data[ch_idx]['power'].append(power_val)
+                
+                # Plot each channel and calculate delta
+                for ch_idx in range(8):
+                    if len(channel_data[ch_idx]['time']) > 0:
+                        times = np.array(channel_data[ch_idx]['time'])
+                        powers = np.array(channel_data[ch_idx]['power'])
+                        
+                        # Perform linear fit
+                        if len(times) > 1:
+                            from scipy import stats
+                            slope, intercept, r_value, p_value, std_err = stats.linregress(times, powers)
+                            
+                            # Calculate delta: difference between end and start of time range
+                            t_start = times.min()
+                            t_end = times.max()
+                            power_start = slope * t_start + intercept
+                            power_end = slope * t_end + intercept
+                            delta = power_end - power_start
+                            
+                            label = f'B{bank_label}-Ch{ch_idx} (Δ={delta:.2f} dB)'
+                        else:
+                            label = f'B{bank_label}-Ch{ch_idx}'
+                        
+                        ax.plot(times, powers,
+                               color=colors[ch_idx], linewidth=1.0, alpha=0.7,
+                               label=label, marker='o', markersize=2)
+            
+            # Configure axes
+            ax.set_xlabel('Time (hours)', fontsize=9)
+            ax.set_ylabel('Optical Power (dBm)', fontsize=9)
+            ax.set_ylim(9, 13)
+            ax.set_xlim(0, 96)
+            ax.set_xticks(np.arange(0, 97, 12))
+            
+            # Add Endeavour power specs (both in red with shaded region)
+            ax.axhline(y=10.0, color='red', linestyle='--', linewidth=1.5, alpha=0.7, label='Endeavour Min (10 dBm)')
+            ax.axhline(y=12.3, color='red', linestyle='--', linewidth=1.5, alpha=0.7, label='Endeavour Max (12.3 dBm)')
+            ax.axhspan(10.0, 12.3, color='green', alpha=0.05)
+            
+            ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
+            ax.tick_params(labelsize=8)
+            ax.grid(True, alpha=0.3)
+            
+            # Add legend
+            handles, labels = ax.get_legend_handles_labels()
+            by_label = dict(zip(labels, handles))
+            ax.legend(by_label.values(), by_label.keys(), loc='best', fontsize=4.5, ncol=2)
+        
+        plt.tight_layout()
+        plot_filename = 'missionmode_power_all_tiles_delta.png'
+        plt.savefig(self.test2_path / plot_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ Plot saved: {plot_filename}\n")
+    
+    def plot_missionmode_freqerror_all_tiles_delta(self):
+        """Plot frequency error vs time for all tiles with linear fit delta in legend."""
+        print("Plotting mission mode frequency error with delta for all tiles...")
+        
+        # Load data
+        wavemeter_df = self.load_wavemeter_data()
+        if wavemeter_df is None:
+            return
+        
+        # Subsample to 15-minute intervals
+        wavemeter_df = self.subsample_to_15min(wavemeter_df)
+        
+        # Get all unique tiles
+        tile_ids = sorted(wavemeter_df['tile_id'].unique())
+        
+        # Color maps
+        colors_a = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
+        colors_b = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
+        
+        # Create figure with 4x4 subplots
+        fig, axes = plt.subplots(4, 4, figsize=(24, 24))
+        axes = axes.flatten()
+        
+        # Speed of light constant
+        c_speed_light = 299792.458  # THz*nm
+        
+        # Plot each tile in a separate subplot
+        for plot_idx, tile_id in enumerate(tile_ids):
+            if plot_idx >= 16:  # Only plot up to 16 tiles
+                break
+                
+            ax = axes[plot_idx]
+            tile_data = wavemeter_df[wavemeter_df['tile_id'] == tile_id]
+            
+            # Load reference wavelengths (using first cycle as reference)
+            ref_wavelengths = {}
+            cycle_0_data = tile_data[tile_data['cycle_number'] == 0]
+            for idx, row in cycle_0_data.iterrows():
+                bank_type = row['bank_type']
+                wavelengths_raw = np.array(row['wavelength_nm'])
+                if len(wavelengths_raw) > 1:
+                    wavelengths_raw = wavelengths_raw[1:]  # Skip first element
+                    # Filter out invalid wavelength data (keep values > 1e12)
+                    valid_mask = wavelengths_raw > 1e12
+                    if valid_mask.any():
+                        wavelengths_raw = wavelengths_raw[valid_mask]
+                        # Convert to nm by DIVIDING by 1e9 (raw ~1.3e12 -> ~1300 nm)
+                        wavelengths_nm = wavelengths_raw / 1e9
+                        ref_wavelengths[bank_type] = wavelengths_nm
+            
+            # Plot both banks
+            for bank_type in ['BANK_A', 'BANK_B']:
+                bank_data = tile_data[tile_data['bank_type'] == bank_type]
+                
+                if bank_type not in ref_wavelengths:
+                    continue
+                
+                ref_wl = ref_wavelengths[bank_type]
+                
+                colors = colors_a if bank_type == 'BANK_A' else colors_b
+                bank_label = 'A' if bank_type == 'BANK_A' else 'B'
+                
+                # Collect data for each channel to plot as lines and calculate delta
+                channel_data = {i: {'time': [], 'freq_error': []} for i in range(8)}
+                
+                for idx, row in bank_data.iterrows():
+                    time_hours = row['time_seconds'] / 3600.0  # Convert to hours
+                    wavelengths_raw = np.array(row['wavelength_nm'])
+                    
+                    if len(wavelengths_raw) > 1:
+                        wavelengths_raw = wavelengths_raw[1:]  # Skip first element
+                        
+                        # Filter out invalid wavelength data (keep values > 1e12)
+                        valid_mask = wavelengths_raw > 1e12
+                        if not valid_mask.any():
+                            continue
+                        
+                        wavelengths_raw = wavelengths_raw[valid_mask]
+                        # Convert to nm by DIVIDING by 1e9 (raw ~1.3e12 -> ~1300 nm)
+                        wavelengths_nm = wavelengths_raw / 1e9
+                        
+                        # Additional filtering: remove unrealistic wavelengths (should be 1200-1400 nm)
+                        realistic_mask = (wavelengths_nm >= 1200) & (wavelengths_nm <= 1400)
+                        if not realistic_mask.any():
+                            continue
+                        wavelengths_nm = wavelengths_nm[realistic_mask]
+                        
+                        # Ensure wavelengths and ref_wl have same length
+                        min_len = min(len(wavelengths_nm), len(ref_wl))
+                        wavelengths_nm = wavelengths_nm[:min_len]
+                        ref_wl_subset = ref_wl[:min_len]
+                        
+                        # Calculate frequency from wavelength
+                        measured_freq_thz = c_speed_light / wavelengths_nm
+                        ref_freq_thz = c_speed_light / ref_wl_subset
+                        freq_error_ghz = (measured_freq_thz - ref_freq_thz) * 1000  # THz to GHz
+                        
+                        # Filter outliers (> ±100 GHz)
+                        valid_freq_mask = np.abs(freq_error_ghz) < 100
+                        if not valid_freq_mask.any():
+                            continue
+                        
+                        freq_error_ghz = freq_error_ghz[valid_freq_mask]
+                        
+                        # Match channel indices
+                        for ch_idx, freq_val in enumerate(freq_error_ghz[:8]):  # Only take first 8 channels
+                            if not np.isnan(freq_val):
+                                channel_data[ch_idx]['time'].append(time_hours)
+                                channel_data[ch_idx]['freq_error'].append(freq_val)
+                
+                # Plot each channel and calculate delta
+                for ch_idx in range(8):
+                    if len(channel_data[ch_idx]['time']) > 0:
+                        times = np.array(channel_data[ch_idx]['time'])
+                        freq_errors = np.array(channel_data[ch_idx]['freq_error'])
+                        
+                        # Perform linear fit
+                        if len(times) > 1:
+                            from scipy import stats
+                            slope, intercept, r_value, p_value, std_err = stats.linregress(times, freq_errors)
+                            
+                            # Calculate delta: difference between end and start of time range
+                            t_start = times.min()
+                            t_end = times.max()
+                            freq_start = slope * t_start + intercept
+                            freq_end = slope * t_end + intercept
+                            delta = freq_end - freq_start
+                            
+                            label = f'B{bank_label}-Ch{ch_idx} (Δ={delta:.1f} GHz)'
+                        else:
+                            label = f'B{bank_label}-Ch{ch_idx}'
+                        
+                        ax.plot(times, freq_errors,
+                               color=colors[ch_idx], linewidth=1.0, alpha=0.7,
+                               label=label, marker='o', markersize=2)
+            
+            # Configure axes
+            ax.set_xlabel('Time (hours)', fontsize=9)
+            ax.set_ylabel('Frequency Error (GHz)', fontsize=9)
+            ax.set_ylim(-50, 50)
+            ax.set_xlim(0, 96)
+            ax.set_xticks(np.arange(0, 97, 12))
+            
+            # Add spec limits (±20 GHz)
+            ax.axhline(y=20, color='red', linestyle=':', linewidth=1.5, alpha=0.5)
+            ax.axhline(y=-20, color='red', linestyle=':', linewidth=1.5, alpha=0.5)
+            ax.axhspan(-20, 20, color='green', alpha=0.05)
+            
+            ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
+            ax.tick_params(labelsize=8)
+            ax.grid(True, alpha=0.3)
+            
+            # Add legend
+            handles, labels = ax.get_legend_handles_labels()
+            by_label = dict(zip(labels, handles))
+            ax.legend(by_label.values(), by_label.keys(), loc='best', fontsize=4.5, ncol=2)
+        
+        plt.tight_layout()
+        plot_filename = 'missionmode_freqerror_all_tiles_delta.png'
+        plt.savefig(self.test2_path / plot_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ Plot saved: {plot_filename}\n")
+    
     def identify_frequency_outliers(self, threshold_ghz=100):
         """Identify and export data points with frequency errors exceeding threshold."""
         print(f"Identifying frequency error outliers (|freq_error| > {threshold_ghz} GHz)...")
@@ -4913,10 +5212,18 @@ class temperature_aggressors_2:
         print("GENERATING ALL MISSION MODE PLOTS - TEST 2")
         print("=" * 80 + "\n")
         
-        # Full time range plots with 1-minute sampling
+        # Full time range plots with 10-minute sampling
         self.plot_missionmode_power()
         self.plot_missionmode_freqerror()
         self.plot_missionmode_operatingpoints()
+        
+        # Delta plots (with linear fit to calculate change over time)
+        print("\n" + "=" * 80)
+        print("GENERATING DELTA PLOTS (with linear fit analysis)")
+        print("=" * 80 + "\n")
+        
+        self.plot_missionmode_power_all_tiles_delta()
+        self.plot_missionmode_freqerror_all_tiles_delta()
         
         # Zoomed plots (46-48 hr) with all data points and temperature overlay
         print("\n" + "=" * 80)
