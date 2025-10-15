@@ -14,6 +14,7 @@ Date: October 2025
 
 import pandas as pd
 import numpy as np
+import ast
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
@@ -4245,13 +4246,9 @@ class temperature_aggressors_2:
                         ref_freq_thz = c_speed_light / ref_wl_subset
                         freq_error_ghz = (measured_freq_thz - ref_freq_thz) * 1000
                         
-                        # Filter out frequency errors beyond reasonable bounds (±100 GHz)
-                        # This removes 400 GHz outliers
-                        valid_freq_mask = np.abs(freq_error_ghz) < 100
-                        
-                        # Store data for each channel
-                        for ch_idx, (f, valid) in enumerate(zip(freq_error_ghz, valid_freq_mask)):
-                            if ch_idx < 8 and valid:  # Only 8 channels and valid freq errors
+                        # Store data for each channel (no frequency filtering)
+                        for ch_idx, f in enumerate(freq_error_ghz):
+                            if ch_idx < 8:  # Only 8 channels
                                 channel_data[ch_idx]['time'].append(time_hours)
                                 channel_data[ch_idx]['freq_error'].append(f)
                 
@@ -4606,11 +4603,9 @@ class temperature_aggressors_2:
                         ref_freq_thz = c_speed_light / ref_wl_subset
                         freq_error_ghz = (measured_freq_thz - ref_freq_thz) * 1000
                         
-                        # Filter out frequency errors beyond reasonable bounds (±100 GHz)
-                        valid_freq_mask = np.abs(freq_error_ghz) < 100
-                        
-                        for ch_idx, (f, valid) in enumerate(zip(freq_error_ghz, valid_freq_mask)):
-                            if ch_idx < 8 and valid:
+                        # Store data for each channel (no frequency filtering)
+                        for ch_idx, f in enumerate(freq_error_ghz):
+                            if ch_idx < 8:
                                 channel_data[ch_idx]['time'].append(time_hours)
                                 channel_data[ch_idx]['freq_error'].append(f)
                 
@@ -4772,6 +4767,123 @@ class temperature_aggressors_2:
         
         print(f"\nCompleted zoomed operating points plots for {len(tile_ids)} tiles\n")
     
+    def identify_frequency_outliers(self, threshold_ghz=100):
+        """Identify and export data points with frequency errors exceeding threshold."""
+        print(f"Identifying frequency error outliers (|freq_error| > {threshold_ghz} GHz)...")
+        
+        # Load full dataset
+        wavemeter_df_full = self.load_wavemeter_data()
+        if wavemeter_df_full is None:
+            return
+        
+        # Load reference wavelengths from cycle 0
+        print("  Loading reference wavelengths from cycle 0...")
+        ref_wavelengths_all = {}
+        for tile_id in sorted(wavemeter_df_full['tile_id'].unique()):
+            ref_wavelengths_all[tile_id] = {}
+            tile_data_full = wavemeter_df_full[wavemeter_df_full['tile_id'] == tile_id]
+            cycle_0_data = tile_data_full[tile_data_full['cycle_number'] == 0]
+            for idx, row in cycle_0_data.iterrows():
+                bank_type = row['bank_type']
+                wavelengths_raw = np.array(row['wavelength_nm'])
+                if len(wavelengths_raw) > 1:
+                    wavelengths_raw = wavelengths_raw[1:]
+                    valid_mask = wavelengths_raw > 1e12
+                    if valid_mask.any():
+                        wavelengths_raw = wavelengths_raw[valid_mask]
+                        wavelengths_nm = wavelengths_raw / 1e9
+                        # Additional filtering: remove unrealistic wavelengths
+                        realistic_mask = (wavelengths_nm >= 1200) & (wavelengths_nm <= 1400)
+                        if realistic_mask.any():
+                            wavelengths_nm = wavelengths_nm[realistic_mask]
+                            ref_wavelengths_all[tile_id][bank_type] = wavelengths_nm
+        
+        c_speed_light = 299792.458
+        outlier_data = []
+        
+        # Scan through all data
+        print("  Scanning data for outliers...")
+        for idx, row in wavemeter_df_full.iterrows():
+            tile_id = row['tile_id']
+            bank_type = row['bank_type']
+            cycle = row['cycle_number']
+            time_hours = row['time_seconds'] / 3600.0
+            timestamp = row['timestamp']
+            
+            if tile_id not in ref_wavelengths_all or bank_type not in ref_wavelengths_all[tile_id]:
+                continue
+            
+            ref_wl = ref_wavelengths_all[tile_id][bank_type]
+            
+            # Handle wavelength_nm which may be string or already parsed
+            wavelengths_raw = row['wavelength_nm']
+            if isinstance(wavelengths_raw, str):
+                try:
+                    wavelengths_raw = ast.literal_eval(wavelengths_raw)
+                except:
+                    continue
+            wavelengths_raw = np.array(wavelengths_raw)
+            
+            if len(wavelengths_raw) > 1:
+                wavelengths_raw = wavelengths_raw[1:]
+                valid_mask = wavelengths_raw > 1e12
+                if not valid_mask.any():
+                    continue
+                
+                wavelengths_raw = wavelengths_raw[valid_mask]
+                wavelengths_nm = wavelengths_raw / 1e9
+                
+                realistic_mask = (wavelengths_nm >= 1200) & (wavelengths_nm <= 1400)
+                if not realistic_mask.any():
+                    continue
+                wavelengths_nm = wavelengths_nm[realistic_mask]
+                
+                min_len = min(len(wavelengths_nm), len(ref_wl))
+                wavelengths_nm = wavelengths_nm[:min_len]
+                ref_wl_subset = ref_wl[:min_len]
+                
+                measured_freq_thz = c_speed_light / wavelengths_nm
+                ref_freq_thz = c_speed_light / ref_wl_subset
+                freq_error_ghz = (measured_freq_thz - ref_freq_thz) * 1000
+                
+                # Check for outliers
+                for ch_idx, (measured_wl, ref_wl_ch, freq_err) in enumerate(zip(wavelengths_nm, ref_wl_subset, freq_error_ghz)):
+                    if ch_idx < 8 and abs(freq_err) > threshold_ghz:
+                        outlier_data.append({
+                            'timestamp': timestamp,
+                            'time_hours': time_hours,
+                            'tile_id': tile_id,
+                            'bank_type': bank_type,
+                            'cycle': cycle,
+                            'channel': ch_idx,
+                            'measured_wavelength_nm': measured_wl,
+                            'reference_wavelength_nm': ref_wl_ch,
+                            'freq_error_ghz': freq_err,
+                            'temp_pic_C': row['temp_pic_C'],
+                            'temp_mux_C': row['temp_mux_C'],
+                            'temp_pmic_C': row['temp_pmic_C'],
+                            'laser_dac': row['laser_dac_value'] if isinstance(row['laser_dac_value'], (int, float)) else 'array',
+                            'voa_dac': row['voa_dac_value'] if isinstance(row['voa_dac_value'], (int, float)) else 'array'
+                        })
+        
+        # Create DataFrame and save to CSV
+        if len(outlier_data) > 0:
+            outliers_df = pd.DataFrame(outlier_data)
+            output_file = self.test2_path / f'frequency_outliers_above_{threshold_ghz}ghz.csv'
+            outliers_df.to_csv(output_file, index=False)
+            
+            print(f"\n  ✓ Found {len(outlier_data)} outlier data points")
+            print(f"  ✓ Saved to: {output_file}")
+            print(f"\n  Summary:")
+            print(f"    Tiles affected: {sorted(outliers_df['tile_id'].unique())}")
+            print(f"    Banks affected: {sorted(outliers_df['bank_type'].unique())}")
+            print(f"    Freq error range: {outliers_df['freq_error_ghz'].min():.1f} to {outliers_df['freq_error_ghz'].max():.1f} GHz")
+            print(f"    Time range: {outliers_df['time_hours'].min():.1f} to {outliers_df['time_hours'].max():.1f} hours")
+        else:
+            print(f"  ✓ No outliers found with |freq_error| > {threshold_ghz} GHz")
+        
+        return outliers_df if len(outlier_data) > 0 else None
+    
     def run_all_plots(self):
         """Generate all mission mode plots."""
         print("\n" + "=" * 80)
@@ -4792,7 +4904,14 @@ class temperature_aggressors_2:
         self.plot_missionmode_freqerror_zoomed()
         self.plot_missionmode_operatingpoints_zoomed()
         
-        print("=" * 80)
+        # Identify frequency outliers
+        print("\n" + "=" * 80)
+        print("IDENTIFYING FREQUENCY OUTLIERS")
+        print("=" * 80 + "\n")
+        
+        self.identify_frequency_outliers(threshold_ghz=100)
+        
+        print("\n" + "=" * 80)
         print("All plots completed!")
         print(f"Results saved to: {self.test2_path}")
         print("=" * 80)
