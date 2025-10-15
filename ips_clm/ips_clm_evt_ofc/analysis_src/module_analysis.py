@@ -4385,8 +4385,8 @@ class temperature_aggressors_2:
         print(f"\nCompleted operating points plots for {len(tile_ids)} tiles\n")
     
     def plot_missionmode_power_zoomed(self):
-        """Plot optical power vs time for all tiles in a 2x8 grid, zoomed to 48-50 hours with temperature overlay."""
-        print("Plotting zoomed mission mode power (48-50 hr) with temperature overlay...")
+        """Plot optical power vs time for all tiles in a 2x8 grid, zoomed to 46-48 hours with temperature overlay."""
+        print("Plotting zoomed mission mode power (46-48 hr) with temperature overlay...")
         
         # Load data (without subsampling for zoomed view)
         wavemeter_df = self.load_wavemeter_data()
@@ -4394,9 +4394,9 @@ class temperature_aggressors_2:
         if wavemeter_df is None or temp_df is None:
             return
         
-        # Filter data to 48-50 hour window
-        time_min = 48 * 3600  # 48 hours in seconds
-        time_max = 50 * 3600  # 50 hours in seconds
+        # Filter data to 46-48 hour window
+        time_min = 46 * 3600  # 46 hours in seconds
+        time_max = 48 * 3600  # 48 hours in seconds
         wavemeter_df = wavemeter_df[(wavemeter_df['time_seconds'] >= time_min) & 
                                       (wavemeter_df['time_seconds'] <= time_max)]
         
@@ -4464,7 +4464,7 @@ class temperature_aggressors_2:
             ax.set_ylabel('Optical Power (dBm)', fontsize=9, color='black')
             ax2.set_ylabel('Temperature (°C)', fontsize=9, color='red')
             ax.set_ylim(9, 13)
-            ax.set_xlim(48, 50)
+            ax.set_xlim(46, 48)
             ax2.tick_params(axis='y', labelcolor='red')
             
             ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
@@ -4482,7 +4482,7 @@ class temperature_aggressors_2:
         for plot_idx in range(len(tile_ids), 16):
             axes[plot_idx].axis('off')
         
-        plt.suptitle('Optical Power vs Time (48-50 hr zoom) - All Tiles', fontsize=14, fontweight='bold', y=0.995)
+        plt.suptitle('Optical Power vs Time (46-48 hr zoom) - All Tiles', fontsize=14, fontweight='bold', y=0.995)
         plt.tight_layout()
         
         plot_filename = 'missionmode_power_all_tiles_zoomed.png'
@@ -4492,8 +4492,8 @@ class temperature_aggressors_2:
         print(f"  ✓ Zoomed plot saved: {plot_filename}\n")
     
     def plot_missionmode_freqerror_zoomed(self):
-        """Plot frequency error vs time for all tiles in a 2x8 grid, zoomed to 48-50 hours with temperature overlay."""
-        print("Plotting zoomed mission mode frequency error (48-50 hr) with temperature overlay...")
+        """Plot frequency error vs time for all tiles in a 2x8 grid, zoomed to 46-48 hours with temperature overlay."""
+        print("Plotting zoomed mission mode frequency error (46-48 hr) with temperature overlay...")
         
         # Load data (without subsampling)
         wavemeter_df = self.load_wavemeter_data()
@@ -4501,9 +4501,9 @@ class temperature_aggressors_2:
         if wavemeter_df is None or temp_df is None:
             return
         
-        # Filter data to 48-50 hour window
-        time_min = 48 * 3600
-        time_max = 50 * 3600
+        # Filter data to 46-48 hour window
+        time_min = 46 * 3600
+        time_max = 48 * 3600
         wavemeter_df = wavemeter_df[(wavemeter_df['time_seconds'] >= time_min) & 
                                       (wavemeter_df['time_seconds'] <= time_max)]
         
@@ -4597,7 +4597,7 @@ class temperature_aggressors_2:
             ax.set_xlabel('Time (hours)', fontsize=9)
             ax.set_ylabel('Frequency Error (GHz)', fontsize=9, color='black')
             ax2.set_ylabel('Temperature (°C)', fontsize=9, color='red')
-            ax.set_xlim(48, 50)
+            ax.set_xlim(46, 48)
             ax2.tick_params(axis='y', labelcolor='red')
             
             ax.axhline(y=20, color='red', linestyle=':', linewidth=1.5, alpha=0.3)
@@ -4616,7 +4616,7 @@ class temperature_aggressors_2:
         for plot_idx in range(len(tile_ids), 16):
             axes[plot_idx].axis('off')
         
-        plt.suptitle('Frequency Error vs Time (48-50 hr zoom) - All Tiles', fontsize=14, fontweight='bold', y=0.995)
+        plt.suptitle('Frequency Error vs Time (46-48 hr zoom) - All Tiles', fontsize=14, fontweight='bold', y=0.995)
         plt.tight_layout()
         
         plot_filename = 'missionmode_freqerror_all_tiles_zoomed.png'
@@ -4626,8 +4626,8 @@ class temperature_aggressors_2:
         print(f"  ✓ Zoomed plot saved: {plot_filename}\n")
     
     def plot_missionmode_operatingpoints_zoomed(self):
-        """Plot operating points vs time for all tiles, zoomed to 48-50 hours with temperature overlay."""
-        print("Plotting zoomed mission mode operating points (48-50 hr) for all tiles...")
+        """Plot operating points vs time for all tiles, zoomed to 46-48 hours with temperature overlay."""
+        print("Plotting zoomed mission mode operating points (46-48 hr) for all tiles...")
         
         # Load data
         wavemeter_df = self.load_wavemeter_data()
@@ -4635,9 +4635,9 @@ class temperature_aggressors_2:
         if wavemeter_df is None or temp_df is None:
             return
         
-        # Filter to 48-50 hour window
-        time_min = 48 * 3600
-        time_max = 50 * 3600
+        # Filter to 46-48 hour window
+        time_min = 46 * 3600
+        time_max = 48 * 3600
         wavemeter_df = wavemeter_df[(wavemeter_df['time_seconds'] >= time_min) & 
                                       (wavemeter_df['time_seconds'] <= time_max)]
         
@@ -4714,10 +4714,10 @@ class temperature_aggressors_2:
                 ax.set_xlabel('Time (hours)', fontsize=11)
                 ax.set_ylabel(param_label, fontsize=11, color='black')
                 ax2.set_ylabel('Temperature (°C)', fontsize=11, color='red')
-                ax.set_xlim(48, 50)
+                ax.set_xlim(46, 48)
                 ax2.tick_params(axis='y', labelcolor='red')
                 
-                ax.set_title(f'Tile {tile_id} - {param_label} vs Time (48-50 hr zoom)',
+                ax.set_title(f'Tile {tile_id} - {param_label} vs Time (46-48 hr zoom)',
                             fontsize=12, fontweight='bold')
                 
                 if param_idx == 0:
@@ -4749,9 +4749,9 @@ class temperature_aggressors_2:
         self.plot_missionmode_freqerror()
         self.plot_missionmode_operatingpoints()
         
-        # Zoomed plots (48-50 hr) with all data points and temperature overlay
+        # Zoomed plots (46-48 hr) with all data points and temperature overlay
         print("\n" + "=" * 80)
-        print("GENERATING ZOOMED PLOTS (48-50 hr window with temperature overlay)")
+        print("GENERATING ZOOMED PLOTS (46-48 hr window with temperature overlay)")
         print("=" * 80 + "\n")
         
         self.plot_missionmode_power_zoomed()
