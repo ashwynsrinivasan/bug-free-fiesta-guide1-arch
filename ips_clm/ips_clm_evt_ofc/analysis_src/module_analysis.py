@@ -4078,7 +4078,7 @@ class temperature_aggressors_2:
                     if len(channel_data[ch_idx]['time']) > 0:
                         ax.plot(channel_data[ch_idx]['time'], channel_data[ch_idx]['power'],
                                color=colors[ch_idx], linewidth=1.0, alpha=0.7,
-                               label=f'B{bank_label}-Ch{ch_idx}', marker='o', markersize=2)
+                               label=f'Set{bank_label}-Ch{ch_idx+1}', marker='o', markersize=2)
             
             # Configure axes
             ax.set_xlabel('Time (hours)', fontsize=9)
@@ -4267,7 +4267,7 @@ class temperature_aggressors_2:
                     if len(channel_data[ch_idx]['time']) > 0:
                         ax.plot(channel_data[ch_idx]['time'], channel_data[ch_idx]['freq_error'],
                                color=colors[ch_idx], linewidth=1.0, alpha=0.7,
-                               label=f'B{bank_label}-Ch{ch_idx}', marker='o', markersize=2)
+                               label=f'Set{bank_label}-Ch{ch_idx+1}', marker='o', markersize=2)
             
             # Configure axes
             ax.set_xlabel('Time (hours)', fontsize=9)
@@ -4382,7 +4382,7 @@ class temperature_aggressors_2:
                             if len(channel_data[ch_idx]['time']) > 0:
                                 ax.plot(channel_data[ch_idx]['time'], channel_data[ch_idx]['value'],
                                        color=colors[ch_idx], linewidth=1.0, alpha=0.7,
-                                       label=f'B{bank_label}-Ch{ch_idx}', marker='o', markersize=2)
+                                       label=f'Set{bank_label}-Ch{ch_idx+1}', marker='o', markersize=2)
                 
                 # Configure axes
                 ax.set_xlabel('Time (hours)', fontsize=11)
@@ -4476,7 +4476,7 @@ class temperature_aggressors_2:
                     if len(channel_data[ch_idx]['time']) > 0:
                         ax.plot(channel_data[ch_idx]['time'], channel_data[ch_idx]['power'],
                                color=colors[ch_idx], linewidth=0.8, alpha=0.7,
-                               label=f'B{bank_label}-Ch{ch_idx}', marker='o', markersize=1.5)
+                               label=f'Set{bank_label}-Ch{ch_idx+1}', marker='o', markersize=1.5)
             
             # Plot temperature on second y-axis
             temp_hours = temp_df['Time_seconds'].values / 3600.0
@@ -4634,7 +4634,7 @@ class temperature_aggressors_2:
                     if len(channel_data[ch_idx]['time']) > 0:
                         ax.plot(channel_data[ch_idx]['time'], channel_data[ch_idx]['freq_error'],
                                color=colors[ch_idx], linewidth=0.8, alpha=0.7,
-                               label=f'B{bank_label}-Ch{ch_idx}', marker='o', markersize=1.5)
+                               label=f'Set{bank_label}-Ch{ch_idx+1}', marker='o', markersize=1.5)
             
             # Plot temperature on second y-axis
             temp_hours = temp_df['Time_seconds'].values / 3600.0
@@ -4755,7 +4755,7 @@ class temperature_aggressors_2:
                             if len(channel_data[ch_idx]['time']) > 0:
                                 ax.plot(channel_data[ch_idx]['time'], channel_data[ch_idx]['value'],
                                        color=colors[ch_idx], linewidth=0.8, alpha=0.7,
-                                       label=f'B{bank_label}-Ch{ch_idx}', marker='o', markersize=1.5)
+                                       label=f'Set{bank_label}-Ch{ch_idx+1}', marker='o', markersize=1.5)
                 
                 # Plot temperature on second y-axis
                 temp_hours = temp_df['Time_seconds'].values / 3600.0
@@ -4889,9 +4889,9 @@ class temperature_aggressors_2:
                             power_end = slope * t_end + intercept
                             delta = power_end - power_start
                             
-                            label = f'B{bank_label}-Ch{ch_idx} (Δ={delta:.2f} dB)'
+                            label = f'Set{bank_label}-Ch{ch_idx+1} (Δ={delta:.2f} dB)'
                         else:
-                            label = f'B{bank_label}-Ch{ch_idx}'
+                            label = f'Set{bank_label}-Ch{ch_idx+1}'
                         
                         ax.plot(times, powers,
                                color=colors[ch_idx], linewidth=1.0, alpha=0.7,
@@ -5053,9 +5053,9 @@ class temperature_aggressors_2:
                             freq_end = slope * t_end + intercept
                             delta = freq_end - freq_start
                             
-                            label = f'B{bank_label}-Ch{ch_idx} (Δ={delta:.1f} GHz)'
+                            label = f'Set{bank_label}-Ch{ch_idx+1} (Δ={delta:.1f} GHz)'
                         else:
-                            label = f'B{bank_label}-Ch{ch_idx}'
+                            label = f'Set{bank_label}-Ch{ch_idx+1}'
                         
                         ax.plot(times, freq_errors,
                                color=colors[ch_idx], linewidth=1.0, alpha=0.7,
@@ -5173,9 +5173,9 @@ class temperature_aggressors_2:
                             power_end = slope * t_end + intercept
                             delta = power_end - power_start
                             
-                            label = f'B{bank_label}-Ch{ch_idx} (Δ={delta:.2f} dB)'
+                            label = f'Set{bank_label}-Ch{ch_idx+1} (Δ={delta:.2f} dB)'
                         else:
-                            label = f'B{bank_label}-Ch{ch_idx}'
+                            label = f'Set{bank_label}-Ch{ch_idx+1}'
                         
                         ax.plot(times, powers, color=colors[ch_idx], 
                                linewidth=0.8, alpha=0.7, label=label, 
@@ -5342,9 +5342,9 @@ class temperature_aggressors_2:
                             freq_end = slope * t_end + intercept
                             delta = freq_end - freq_start
                             
-                            label = f'B{bank_label}-Ch{ch_idx} (Δ={delta:.1f} GHz)'
+                            label = f'Set{bank_label}-Ch{ch_idx+1} (Δ={delta:.1f} GHz)'
                         else:
-                            label = f'B{bank_label}-Ch{ch_idx}'
+                            label = f'Set{bank_label}-Ch{ch_idx+1}'
                         
                         ax.plot(times, freq_errors, color=colors[ch_idx],
                                linewidth=0.8, alpha=0.7, label=label,
@@ -5702,9 +5702,9 @@ class temperature_aggressors_2:
                             freq_end = slope * t_end + intercept
                             delta = freq_end - freq_start
                             
-                            label = f'B{bank_label}-Ch{ch_idx} (Δ={delta:.1f} GHz)'
+                            label = f'Set{bank_label}-Ch{ch_idx+1} (Δ={delta:.1f} GHz)'
                         else:
-                            label = f'B{bank_label}-Ch{ch_idx}'
+                            label = f'Set{bank_label}-Ch{ch_idx+1}'
                         
                         ax.plot(times, freq_errors, color=colors[ch_idx],
                                linewidth=0.8, alpha=0.7, label=label,
@@ -5802,7 +5802,7 @@ class temperature_aggressors_2:
                     if len(channel_data[ch_idx]['time']) > 0:
                         ax.plot(channel_data[ch_idx]['time'], channel_data[ch_idx]['power'],
                                color=colors[ch_idx], linewidth=1.0, alpha=0.7,
-                               label=f'B{bank_label}-Ch{ch_idx}', marker='o', markersize=2)
+                               label=f'Set{bank_label}-Ch{ch_idx+1}', marker='o', markersize=2)
             
             ax.set_xlabel('Time (hours)', fontsize=9)
             ax.set_ylabel('Optical Power (dBm)', fontsize=9)
