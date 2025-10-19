@@ -1,0 +1,56 @@
+# Filter Criteria for CLM Manufacturing Data Analysis
+# Tiles must satisfy ALL criteria to be included in analysis
+
+filters:
+  # Frequency error filter (applies to TP2-5 wavelength/frequency measurements)
+  frequency_error:
+    min_ghz: -40  # Minimum acceptable frequency error in GHz
+    max_ghz: 40   # Maximum acceptable frequency error in GHz
+    description: "Frequency error must be within ±40 GHz of target"
+    
+  # Optical power filter (applies to TP2-6 power measurements)
+  optical_power:
+    min_mw: 5.0   # Minimum acceptable optical power in mW
+    description: "All channels must have optical power greater than 5 mW"
+    
+  # Total power filter (applies to TP2-5 total power measurements per bank)
+  total_power:
+    min_mw: 98.0  # Minimum acceptable total power per bank in mW
+    description: "Average power per channel must be greater than or equal to 98 mW"
+    
+  # Channel spacing error filter (applies to TP2-4 or TP2-5 channel spacing measurements)
+  channel_spacing_error:
+    max_abs_ghz: 200.0  # Maximum absolute channel spacing error in GHz
+    description: "Channel spacing error must be less than 200 GHz"
+
+# OFC-specific filters (more stringent for conference presentation)
+ofc_filters:
+  # OFC Frequency error filter (stricter than general filter)
+  frequency_error:
+    min_ghz: -25  # Minimum acceptable frequency error in GHz
+    max_ghz: 25   # Maximum acceptable frequency error in GHz
+    description: "Frequency error must be within ±25 GHz of target for OFC"
+    
+  # OFC Optical power filter per channel (stricter range for quality selection)
+  optical_power:
+    min_mw: 7.5   # Minimum acceptable optical power per channel in mW
+    max_mw: 20.0  # Maximum acceptable optical power per channel in mW
+    description: "Individual channel power must be between 7.5 and 20 mW for OFC"
+
+# Filter application strategy
+strategy:
+  # Tile-level filtering: A tile is excluded if ANY measurement fails the criteria
+  level: "tile"
+  
+  # Apply power filter first, then frequency filter, then spacing filter to remaining tiles
+  order:
+    - "optical_power"  # TP2-6 power requirements
+    - "total_power"  # TP2-5 total power requirements
+    - "frequency_error"  # TP2-5 frequency requirements
+    - "channel_spacing_error"  # TP2-4/TP2-5 channel spacing requirements
+    
+notes:
+  - "Filters are applied at the tile level"
+  - "All channels in all banks must pass for a tile to be included"
+  - "Power filter uses minimum power across all channels"
+  - "Frequency filter checks all measurements at T_MUX=50C"

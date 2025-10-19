@@ -1827,19 +1827,29 @@ class tpanalysis:
         """
         OFC plotter for frequency error and power distribution.
         Creates simplified violin plots for OFC presentation.
+        Uses OFC-specific filters from filter.yaml.
         """
         print("Starting OFC Plotter...")
-        print("Applying filters from filter.yaml...")
+        print("Applying OFC-specific filters from filter.yaml...")
         
         # Create ofc folder
         ofc_path = self.results_path / "ofc"
         ofc_path.mkdir(exist_ok=True)
         
+        # Load OFC-specific filters
+        import yaml
+        filter_file = self.base_path / "analysis_src" / "filter.yaml"
+        with open(filter_file, 'r') as f:
+            filter_config = yaml.safe_load(f)
+            ofc_filters = filter_config['ofc_filters']
+        
+        print(f"OFC Filters: Power {ofc_filters['optical_power']['min_mw']}-{ofc_filters['optical_power']['max_mw']}mW, "
+              f"Freq error: {ofc_filters['frequency_error']['min_ghz']} to {ofc_filters['frequency_error']['max_ghz']} GHz")
+        
         # Get valid tiles that pass all filters
         valid_tiles = self._get_valid_tiles()
         
         # Load wavelength grid for frequency error
-        import yaml
         grid_file = self.base_path / "analysis_src" / "wavelength_grid.yaml"
         with open(grid_file, 'r') as f:
             wl_grid = yaml.safe_load(f)
@@ -1851,7 +1861,14 @@ class tpanalysis:
         df_freq_v1['Version'] = 'v1'
         df_freq_v2['Version'] = 'v2'
         df_freq = pd.concat([df_freq_v1, df_freq_v2], ignore_index=True)
-        print(f"Loaded {len(df_freq)} frequency error records")
+        print(f"Loaded {len(df_freq)} frequency error records (before OFC filtering)")
+        
+        # Apply OFC frequency error filter
+        freq_min = ofc_filters['frequency_error']['min_ghz']
+        freq_max = ofc_filters['frequency_error']['max_ghz']
+        df_freq = df_freq[(df_freq['Frequency_Error_GHz'] >= freq_min) & 
+                          (df_freq['Frequency_Error_GHz'] <= freq_max)]
+        print(f"After OFC freq filter: {len(df_freq)} records (within {freq_min} to {freq_max} GHz)")
         
         # Load TP2-6 data for power
         print("\nLoading TP2-6 data for power...")
@@ -1862,7 +1879,14 @@ class tpanalysis:
         df_power_v1['Version'] = 'v1'
         df_power_v2['Version'] = 'v2'
         df_power = pd.concat([df_power_v1, df_power_v2], ignore_index=True)
-        print(f"Loaded {len(df_power)} power records")
+        print(f"Loaded {len(df_power)} power records (before OFC filtering)")
+        
+        # Apply OFC power filter
+        power_min = ofc_filters['optical_power']['min_mw']
+        power_max = ofc_filters['optical_power']['max_mw']
+        df_power = df_power[(df_power['Power(mW)'] >= power_min) & 
+                            (df_power['Power(mW)'] <= power_max)]
+        print(f"After OFC power filter: {len(df_power)} records (within {power_min} to {power_max} mW)")
         
         # Plot frequency error
         self._plot_ofc_freq_error(df_freq, ofc_path / "ofc_freq_error.png")
