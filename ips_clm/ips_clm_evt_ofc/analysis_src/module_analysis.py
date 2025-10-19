@@ -5709,7 +5709,7 @@ class temperature_aggressors_2:
             ax.set_xlabel('Time (hours)', fontsize=9)
             ax.set_ylabel('Frequency Error (GHz)', fontsize=9, color='black')
             ax2.set_ylabel('Temperature (°C)', fontsize=9, color='red')
-            ax.set_ylim(-50, 50)
+            ax.set_ylim(-100, 100)
             ax.set_xlim(46, 48)
             ax2.tick_params(axis='y', labelcolor='red')
             
@@ -5915,7 +5915,7 @@ class temperature_aggressors_2:
             
             ax.set_xlabel('Time (hours)', fontsize=9)
             ax.set_ylabel('Frequency Error (GHz)', fontsize=9)
-            ax.set_ylim(-50, 50)
+            ax.set_ylim(-100, 100)
             ax.set_xlim(0, 96)
             ax.set_xticks(np.arange(0, 97, 12))
             
