@@ -1898,7 +1898,7 @@ class tpanalysis:
         print(f"Plots saved to: {ofc_path}")
     
     def _plot_ofc_freq_error(self, df, output_path):
-        """Create OFC frequency error violin plot."""
+        """Create OFC frequency error scatter plot with all data points."""
         if df.empty:
             print("No data available for frequency error plot")
             return
@@ -1909,11 +1909,8 @@ class tpanalysis:
         
         # Define colors by bank (Red for Set A/Bank 1, Blue for Set B/Bank 0)
         bank_colors = {1: 'red', 0: 'blue'}  # Bank 1 = Set A (Red), Bank 0 = Set B (Blue)
+        bank_markers = {1: 'o', 0: '^'}  # Circle for Set A, Triangle for Set B
         
-        # Collect data for violin and box plots
-        box_data = []
-        box_positions = []
-        box_colors = []
         x_labels = []
         
         for channel in range(8):
@@ -1923,30 +1920,13 @@ class tpanalysis:
                     errors = df_channel['Frequency_Error_GHz'].values
                     pos = channel * 2 + (0 if bank == 1 else 1)  # Set A on left, Set B on right
                     
-                    box_data.append(errors)
-                    box_positions.append(pos)
-                    box_colors.append(bank_colors[bank])
+                    # Add scatter plot with all data points
+                    x_scatter = np.random.normal(pos, 0.1, size=len(errors))
+                    ax.scatter(x_scatter, errors, color=bank_colors[bank], 
+                              alpha=0.7, s=30, marker=bank_markers[bank],
+                              edgecolors='black', linewidth=0.5)
             
             x_labels.append(f'Ch{channel+1}')
-        
-        # Create violin plots
-        parts = ax.violinplot(box_data, positions=box_positions, widths=0.8,
-                             showmeans=False, showmedians=False, showextrema=False)
-        
-        # Color the violin plots by bank
-        for pc, color in zip(parts['bodies'], box_colors):
-            pc.set_facecolor(color)
-            pc.set_alpha(0.6)
-            pc.set_edgecolor('black')
-            pc.set_linewidth(1.5)
-        
-        # Overlay boxplots
-        bp = ax.boxplot(box_data, positions=box_positions, widths=0.4,
-                       patch_artist=True, showfliers=False,
-                       boxprops=dict(facecolor='white', edgecolor='black', linewidth=1.5),
-                       whiskerprops=dict(color='black', linewidth=1.5),
-                       capprops=dict(color='black', linewidth=1.5),
-                       medianprops=dict(color='red', linewidth=2))
         
         # Set x-axis labels to channel numbers
         channel_positions = [i * 2 + 0.5 for i in range(8)]
@@ -1956,14 +1936,16 @@ class tpanalysis:
         # Labels (no title)
         ax.set_xlabel('Channel', fontsize=11, fontweight='bold')
         ax.set_ylabel('Frequency Error (GHz)', fontsize=11, fontweight='bold')
-        ax.set_ylim(-50, 50)
+        ax.set_ylim(-100, 100)
         ax.grid(True, alpha=0.3, axis='y')
         
         # Create legend
-        from matplotlib.patches import Patch
+        from matplotlib.lines import Line2D
         legend_elements = [
-            Patch(facecolor='red', edgecolor='black', label='Set A', alpha=0.6),
-            Patch(facecolor='blue', edgecolor='black', label='Set B', alpha=0.6)
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='red', 
+                   markersize=8, markeredgecolor='black', label='Set A', alpha=0.7),
+            Line2D([0], [0], marker='^', color='w', markerfacecolor='blue', 
+                   markersize=8, markeredgecolor='black', label='Set B', alpha=0.7)
         ]
         ax.legend(handles=legend_elements, loc='upper left', fontsize=10, framealpha=0.9)
         
@@ -1973,7 +1955,7 @@ class tpanalysis:
         print(f"Saved: {output_path}")
     
     def _plot_ofc_power(self, df, output_path):
-        """Create OFC power violin plot."""
+        """Create OFC power scatter plot with all data points."""
         if df.empty:
             print("No data available for power plot")
             return
@@ -1984,11 +1966,8 @@ class tpanalysis:
         
         # Define colors by bank (Red for Set A/Bank 1, Blue for Set B/Bank 0)
         bank_colors = {1: 'red', 0: 'blue'}  # Bank 1 = Set A (Red), Bank 0 = Set B (Blue)
+        bank_markers = {1: 'o', 0: '^'}  # Circle for Set A, Triangle for Set B
         
-        # Collect data for violin and box plots
-        box_data = []
-        box_positions = []
-        box_colors = []
         x_labels = []
         
         for channel in range(8):
@@ -1998,30 +1977,13 @@ class tpanalysis:
                     powers = df_channel['Power(mW)'].values
                     pos = channel * 2 + (0 if bank == 1 else 1)  # Set A on left, Set B on right
                     
-                    box_data.append(powers)
-                    box_positions.append(pos)
-                    box_colors.append(bank_colors[bank])
+                    # Add scatter plot with all data points
+                    x_scatter = np.random.normal(pos, 0.1, size=len(powers))
+                    ax.scatter(x_scatter, powers, color=bank_colors[bank], 
+                              alpha=0.7, s=30, marker=bank_markers[bank],
+                              edgecolors='black', linewidth=0.5)
             
             x_labels.append(f'Ch{channel+1}')
-        
-        # Create violin plots
-        parts = ax.violinplot(box_data, positions=box_positions, widths=0.8,
-                             showmeans=False, showmedians=False, showextrema=False)
-        
-        # Color the violin plots by bank
-        for pc, color in zip(parts['bodies'], box_colors):
-            pc.set_facecolor(color)
-            pc.set_alpha(0.6)
-            pc.set_edgecolor('black')
-            pc.set_linewidth(1.5)
-        
-        # Overlay boxplots
-        bp = ax.boxplot(box_data, positions=box_positions, widths=0.4,
-                       patch_artist=True, showfliers=False,
-                       boxprops=dict(facecolor='white', edgecolor='black', linewidth=1.5),
-                       whiskerprops=dict(color='black', linewidth=1.5),
-                       capprops=dict(color='black', linewidth=1.5),
-                       medianprops=dict(color='red', linewidth=2))
         
         # Set x-axis labels to channel numbers
         channel_positions = [i * 2 + 0.5 for i in range(8)]
@@ -2035,10 +1997,12 @@ class tpanalysis:
         ax.grid(True, alpha=0.3, axis='y')
         
         # Create legend
-        from matplotlib.patches import Patch
+        from matplotlib.lines import Line2D
         legend_elements = [
-            Patch(facecolor='red', edgecolor='black', label='Set A', alpha=0.6),
-            Patch(facecolor='blue', edgecolor='black', label='Set B', alpha=0.6)
+            Line2D([0], [0], marker='o', color='w', markerfacecolor='red', 
+                   markersize=8, markeredgecolor='black', label='Set A', alpha=0.7),
+            Line2D([0], [0], marker='^', color='w', markerfacecolor='blue', 
+                   markersize=8, markeredgecolor='black', label='Set B', alpha=0.7)
         ]
         ax.legend(handles=legend_elements, loc='upper left', fontsize=10, framealpha=0.9)
         
