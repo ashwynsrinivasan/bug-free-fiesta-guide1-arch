@@ -1881,7 +1881,7 @@ class tpanalysis:
         
         # Set up the plot style
         sns.set_style("whitegrid")
-        fig, ax = plt.subplots(figsize=(7, 3.5))
+        fig, ax = plt.subplots(figsize=(6, 4))
         
         # Define colors by bank (Red for Set A/Bank 1, Blue for Set B/Bank 0)
         bank_colors = {1: 'red', 0: 'blue'}  # Bank 1 = Set A (Red), Bank 0 = Set B (Blue)
@@ -1929,24 +1929,11 @@ class tpanalysis:
         ax.set_xticks(channel_positions)
         ax.set_xticklabels(x_labels, fontsize=10)
         
-        # Labels and title
+        # Labels (no title)
         ax.set_xlabel('Channel', fontsize=11, fontweight='bold')
         ax.set_ylabel('Frequency Error (GHz)', fontsize=11, fontweight='bold')
-        ax.set_title('Frequency Error Distribution by Channel', fontsize=12, fontweight='bold')
         ax.set_ylim(-50, 50)
         ax.grid(True, alpha=0.3, axis='y')
-        
-        # Calculate overall statistics
-        all_errors = df['Frequency_Error_GHz'].values
-        overall_median = np.median(all_errors)
-        overall_std = np.std(all_errors)
-        
-        # Add text box with overall statistics
-        stats_text = f'μ̃={overall_median:.2f}GHz, σ={overall_std:.2f}GHz'
-        ax.text(0.98, 0.97, stats_text, transform=ax.transAxes,
-               fontsize=10, ha='right', va='top',
-               bbox=dict(boxstyle='round,pad=0.5', facecolor='white', 
-                        edgecolor='gray', alpha=0.9, linewidth=1.5))
         
         # Create legend
         from matplotlib.patches import Patch
@@ -1969,7 +1956,7 @@ class tpanalysis:
         
         # Set up the plot style
         sns.set_style("whitegrid")
-        fig, ax = plt.subplots(figsize=(7, 3.5))
+        fig, ax = plt.subplots(figsize=(6, 4))
         
         # Define colors by bank (Red for Set A/Bank 1, Blue for Set B/Bank 0)
         bank_colors = {1: 'red', 0: 'blue'}  # Bank 1 = Set A (Red), Bank 0 = Set B (Blue)
@@ -2017,23 +2004,11 @@ class tpanalysis:
         ax.set_xticks(channel_positions)
         ax.set_xticklabels(x_labels, fontsize=10)
         
-        # Labels and title
+        # Labels (no title)
         ax.set_xlabel('Channel', fontsize=11, fontweight='bold')
         ax.set_ylabel('Power (mW)', fontsize=11, fontweight='bold')
-        ax.set_title('Power Distribution by Channel', fontsize=12, fontweight='bold')
+        ax.set_ylim(0, 20)
         ax.grid(True, alpha=0.3, axis='y')
-        
-        # Calculate overall statistics
-        all_powers = df['Power(mW)'].values
-        overall_median = np.median(all_powers)
-        overall_std = np.std(all_powers)
-        
-        # Add text box with overall statistics
-        stats_text = f'μ̃={overall_median:.2f}mW, σ={overall_std:.2f}mW'
-        ax.text(0.98, 0.97, stats_text, transform=ax.transAxes,
-               fontsize=10, ha='right', va='top',
-               bbox=dict(boxstyle='round,pad=0.5', facecolor='white', 
-                        edgecolor='gray', alpha=0.9, linewidth=1.5))
         
         # Create legend
         from matplotlib.patches import Patch
