@@ -5692,22 +5692,8 @@ class temperature_aggressors_2:
                         times = np.array(channel_data[ch_idx]['time'])
                         freq_errors = np.array(channel_data[ch_idx]['freq_error'])
                         
-                        if len(times) > 1:
-                            from scipy import stats
-                            slope, intercept, r_value, p_value, std_err = stats.linregress(times, freq_errors)
-                            
-                            t_start = times.min()
-                            t_end = times.max()
-                            freq_start = slope * t_start + intercept
-                            freq_end = slope * t_end + intercept
-                            delta = freq_end - freq_start
-                            
-                            label = f'Set{bank_label}-Ch{ch_idx+1} (Δ={delta:.1f} GHz)'
-                        else:
-                            label = f'Set{bank_label}-Ch{ch_idx+1}'
-                        
                         ax.plot(times, freq_errors, color=colors[ch_idx],
-                               linewidth=0.8, alpha=0.7, label=label,
+                               linewidth=0.8, alpha=0.7,
                                marker='o', markersize=1.5)
             
             # Plot temperature
@@ -5731,10 +5717,8 @@ class temperature_aggressors_2:
             ax.tick_params(labelsize=8)
             ax.grid(True, alpha=0.3)
             
-            handles1, labels1 = ax.get_legend_handles_labels()
-            handles2, labels2 = ax2.get_legend_handles_labels()
-            by_label = dict(zip(labels1 + labels2, handles1 + handles2))
-            ax.legend(by_label.values(), by_label.keys(), loc='best', fontsize=5, ncol=2)
+            # Only show temperature legend
+            ax2.legend(loc='best', fontsize=7)
         
         # Hide unused subplots
         for plot_idx in range(len(tile_ids), 16):
@@ -5802,7 +5786,7 @@ class temperature_aggressors_2:
                     if len(channel_data[ch_idx]['time']) > 0:
                         ax.plot(channel_data[ch_idx]['time'], channel_data[ch_idx]['power'],
                                color=colors[ch_idx], linewidth=1.0, alpha=0.7,
-                               label=f'Set{bank_label}-Ch{ch_idx+1}', marker='o', markersize=2)
+                               marker='o', markersize=2)
             
             ax.set_xlabel('Time (hours)', fontsize=9)
             ax.set_ylabel('Optical Power (dBm)', fontsize=9)
@@ -5810,17 +5794,13 @@ class temperature_aggressors_2:
             ax.set_xlim(0, 96)
             ax.set_xticks(np.arange(0, 97, 12))
             
-            ax.axhline(y=10.0, color='red', linestyle='--', linewidth=1.5, alpha=0.7, label='Endeavour Min (10 dBm)')
-            ax.axhline(y=12.3, color='red', linestyle='--', linewidth=1.5, alpha=0.7, label='Endeavour Max (12.3 dBm)')
+            ax.axhline(y=10.0, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
+            ax.axhline(y=12.3, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
             ax.axhspan(10.0, 12.3, color='green', alpha=0.05)
             
             ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
             ax.tick_params(labelsize=8)
             ax.grid(True, alpha=0.3)
-            
-            handles, labels = ax.get_legend_handles_labels()
-            by_label = dict(zip(labels, handles))
-            ax.legend(by_label.values(), by_label.keys(), loc='best', fontsize=5, ncol=2)
         
         # Hide unused subplots
         for plot_idx in range(len(tile_ids), 16):
