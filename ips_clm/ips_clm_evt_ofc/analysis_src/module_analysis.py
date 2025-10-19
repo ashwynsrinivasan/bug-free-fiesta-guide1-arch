@@ -5549,3 +5549,290 @@ class temperature_aggressors_2:
         print(f"Results saved to: {self.test2_path}")
         print("=" * 80)
     
+    def ofc_analysis(self):
+        """
+        Generate OFC-specific plots with 6x4 inch subplots.
+        Creates only the key plots for OFC presentation:
+        - missionmode_freqerror_all_tiles_delta_zoomed.png
+        - missionmode_power_all_tiles.png
+        """
+        print("\n" + "=" * 80)
+        print("GENERATING OFC ANALYSIS PLOTS")
+        print("  - Each subplot: 6 x 4 inches")
+        print("  - Total figure: 24 x 16 inches (4x4 grid)")
+        print("=" * 80 + "\n")
+        
+        # Create OFC folder
+        ofc_path = self.results_path / "ofc"
+        ofc_path.mkdir(parents=True, exist_ok=True)
+        
+        # Generate frequency error delta zoomed plot
+        self._ofc_plot_freqerror_delta_zoomed(ofc_path)
+        
+        # Generate power plot
+        self._ofc_plot_power(ofc_path)
+        
+        print("\n" + "=" * 80)
+        print("OFC Analysis completed!")
+        print(f"Results saved to: {ofc_path}")
+        print("=" * 80)
+    
+    def _ofc_plot_freqerror_delta_zoomed(self, output_path):
+        """Generate frequency error delta zoomed plot for OFC with 6x4 subplots."""
+        print("Plotting OFC frequency error with delta (46-48 hr)...")
+        
+        # Load data
+        wavemeter_df_full = self.load_wavemeter_data()
+        temp_df = self.load_temperature_data()
+        if wavemeter_df_full is None or temp_df is None:
+            return
+        
+        # Load reference wavelengths from FULL dataset (cycle 0)
+        print("  Loading reference wavelengths from cycle 0...")
+        ref_wavelengths_all = {}
+        for tile_id in sorted(wavemeter_df_full['tile_id'].unique()):
+            ref_wavelengths_all[tile_id] = {}
+            tile_data_full = wavemeter_df_full[wavemeter_df_full['tile_id'] == tile_id]
+            cycle_0_data = tile_data_full[tile_data_full['cycle_number'] == 0]
+            for idx, row in cycle_0_data.iterrows():
+                bank_type = row['bank_type']
+                wavelengths_raw = np.array(row['wavelength_nm'])
+                if len(wavelengths_raw) > 1:
+                    wavelengths_raw = wavelengths_raw[1:]
+                    valid_mask = wavelengths_raw > 1e12
+                    if valid_mask.any():
+                        wavelengths_raw = wavelengths_raw[valid_mask]
+                        wavelengths_nm = wavelengths_raw / 1e9
+                        ref_wavelengths_all[tile_id][bank_type] = wavelengths_nm
+        
+        # Align temperature data
+        ref_start = wavemeter_df_full['timestamp'].iloc[0]
+        temp_df['Time_seconds'] = (temp_df['Timestamp'] - ref_start).dt.total_seconds()
+        
+        # Filter to 46-48 hour window
+        time_min = 46 * 3600
+        time_max = 48 * 3600
+        wavemeter_df = wavemeter_df_full[(wavemeter_df_full['time_seconds'] >= time_min) & 
+                                          (wavemeter_df_full['time_seconds'] <= time_max)]
+        temp_df = temp_df[(temp_df['Time_seconds'] >= time_min) & 
+                          (temp_df['Time_seconds'] <= time_max)]
+        
+        tile_ids = sorted(wavemeter_df['tile_id'].unique())
+        colors_a = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
+        colors_b = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
+        
+        # OFC figure size: 6x4 per subplot in 4x4 grid = 24x16 total
+        fig, axes = plt.subplots(4, 4, figsize=(24, 16))
+        axes = axes.flatten()
+        
+        c_speed_light = 299792.458
+        
+        for plot_idx, tile_id in enumerate(tile_ids):
+            if plot_idx >= 16:
+                break
+                
+            ax = axes[plot_idx]
+            ax2 = ax.twinx()
+            
+            tile_data = wavemeter_df[wavemeter_df['tile_id'] == tile_id]
+            ref_wavelengths = ref_wavelengths_all.get(tile_id, {})
+            
+            for bank_type in ['BANK_A', 'BANK_B']:
+                bank_data = tile_data[tile_data['bank_type'] == bank_type]
+                
+                if bank_type not in ref_wavelengths:
+                    continue
+                
+                ref_wl = ref_wavelengths[bank_type]
+                colors = colors_a if bank_type == 'BANK_A' else colors_b
+                bank_label = 'A' if bank_type == 'BANK_A' else 'B'
+                
+                channel_data = {i: {'time': [], 'freq_error': []} for i in range(8)}
+                
+                for idx, row in bank_data.iterrows():
+                    time_hours = row['time_seconds'] / 3600.0
+                    wavelengths_raw = np.array(row['wavelength_nm'])
+                    
+                    if len(wavelengths_raw) > 1:
+                        wavelengths_raw = wavelengths_raw[1:]
+                        valid_mask = wavelengths_raw > 1e12
+                        if not valid_mask.any():
+                            continue
+                        
+                        wavelengths_raw = wavelengths_raw[valid_mask]
+                        wavelengths_nm = wavelengths_raw / 1e9
+                        
+                        realistic_mask = (wavelengths_nm >= 1200) & (wavelengths_nm <= 1400)
+                        if not realistic_mask.any():
+                            continue
+                        wavelengths_nm = wavelengths_nm[realistic_mask]
+                        
+                        min_len = min(len(wavelengths_nm), len(ref_wl))
+                        wavelengths_nm = wavelengths_nm[:min_len]
+                        ref_wl_subset = ref_wl[:min_len]
+                        
+                        measured_freq_thz = c_speed_light / wavelengths_nm
+                        ref_freq_thz = c_speed_light / ref_wl_subset
+                        freq_error_ghz = (measured_freq_thz - ref_freq_thz) * 1000
+                        
+                        valid_freq_mask = np.abs(freq_error_ghz) < 100
+                        if not valid_freq_mask.any():
+                            continue
+                        
+                        freq_error_ghz = freq_error_ghz[valid_freq_mask]
+                        
+                        for ch_idx, freq_val in enumerate(freq_error_ghz[:8]):
+                            if not np.isnan(freq_val):
+                                channel_data[ch_idx]['time'].append(time_hours)
+                                channel_data[ch_idx]['freq_error'].append(freq_val)
+                
+                # Plot each channel with delta
+                for ch_idx in range(8):
+                    if len(channel_data[ch_idx]['time']) > 0:
+                        times = np.array(channel_data[ch_idx]['time'])
+                        freq_errors = np.array(channel_data[ch_idx]['freq_error'])
+                        
+                        if len(times) > 1:
+                            from scipy import stats
+                            slope, intercept, r_value, p_value, std_err = stats.linregress(times, freq_errors)
+                            
+                            t_start = times.min()
+                            t_end = times.max()
+                            freq_start = slope * t_start + intercept
+                            freq_end = slope * t_end + intercept
+                            delta = freq_end - freq_start
+                            
+                            label = f'B{bank_label}-Ch{ch_idx} (Δ={delta:.1f} GHz)'
+                        else:
+                            label = f'B{bank_label}-Ch{ch_idx}'
+                        
+                        ax.plot(times, freq_errors, color=colors[ch_idx],
+                               linewidth=0.8, alpha=0.7, label=label,
+                               marker='o', markersize=1.5)
+            
+            # Plot temperature
+            temp_hours = temp_df['Time_seconds'].values / 3600.0
+            temp_values = temp_df['Temperature_C'].values
+            ax2.plot(temp_hours, temp_values, color='red', linewidth=2, alpha=0.6,
+                    linestyle='--', label='Case Temp')
+            
+            ax.set_xlabel('Time (hours)', fontsize=9)
+            ax.set_ylabel('Frequency Error (GHz)', fontsize=9, color='black')
+            ax2.set_ylabel('Temperature (°C)', fontsize=9, color='red')
+            ax.set_ylim(-50, 50)
+            ax.set_xlim(46, 48)
+            ax2.tick_params(axis='y', labelcolor='red')
+            
+            ax.axhline(y=20, color='red', linestyle=':', linewidth=1.5, alpha=0.3)
+            ax.axhline(y=-20, color='red', linestyle=':', linewidth=1.5, alpha=0.3)
+            ax.axhspan(-20, 20, color='green', alpha=0.05)
+            
+            ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
+            ax.tick_params(labelsize=8)
+            ax.grid(True, alpha=0.3)
+            
+            handles1, labels1 = ax.get_legend_handles_labels()
+            handles2, labels2 = ax2.get_legend_handles_labels()
+            by_label = dict(zip(labels1 + labels2, handles1 + handles2))
+            ax.legend(by_label.values(), by_label.keys(), loc='best', fontsize=5, ncol=2)
+        
+        # Hide unused subplots
+        for plot_idx in range(len(tile_ids), 16):
+            axes[plot_idx].axis('off')
+        
+        plt.suptitle('Frequency Error vs Time (46-48 hr) - All Tiles', 
+                     fontsize=14, fontweight='bold', y=0.995)
+        plt.tight_layout()
+        
+        plot_filename = 'missionmode_freqerror_all_tiles_delta_zoomed.png'
+        plt.savefig(output_path / plot_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ OFC plot saved: {plot_filename}")
+        print(f"  Figure size: 24 x 16 inches (6x4 per subplot)\n")
+    
+    def _ofc_plot_power(self, output_path):
+        """Generate power plot for OFC with 6x4 subplots."""
+        print("Plotting OFC power for all tiles...")
+        
+        # Load data
+        wavemeter_df = self.load_wavemeter_data()
+        if wavemeter_df is None:
+            return
+        
+        # Subsample to 10-minute intervals
+        wavemeter_df = self.subsample_to_hourly(wavemeter_df)
+        
+        tile_ids = sorted(wavemeter_df['tile_id'].unique())
+        colors_a = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
+        colors_b = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
+        
+        # OFC figure size: 6x4 per subplot in 4x4 grid = 24x16 total
+        fig, axes = plt.subplots(4, 4, figsize=(24, 16))
+        axes = axes.flatten()
+        
+        for plot_idx, tile_id in enumerate(tile_ids):
+            if plot_idx >= 16:
+                break
+                
+            ax = axes[plot_idx]
+            tile_data = wavemeter_df[wavemeter_df['tile_id'] == tile_id]
+            
+            for bank_type in ['BANK_A', 'BANK_B']:
+                bank_data = tile_data[tile_data['bank_type'] == bank_type]
+                
+                colors = colors_a if bank_type == 'BANK_A' else colors_b
+                bank_label = 'A' if bank_type == 'BANK_A' else 'B'
+                
+                channel_data = {i: {'time': [], 'power': []} for i in range(8)}
+                
+                for idx, row in bank_data.iterrows():
+                    time_hours = row['time_seconds'] / 3600.0
+                    power_uw = np.array(row['pic_mpd_value'])
+                    if len(power_uw) > 1:
+                        power_uw = power_uw[1:]
+                        power_dbm = 10 * np.log10(power_uw / 1000.0)
+                        
+                        for ch_idx, p in enumerate(power_dbm):
+                            if ch_idx < 8:
+                                channel_data[ch_idx]['time'].append(time_hours)
+                                channel_data[ch_idx]['power'].append(p)
+                
+                for ch_idx in range(8):
+                    if len(channel_data[ch_idx]['time']) > 0:
+                        ax.plot(channel_data[ch_idx]['time'], channel_data[ch_idx]['power'],
+                               color=colors[ch_idx], linewidth=1.0, alpha=0.7,
+                               label=f'B{bank_label}-Ch{ch_idx}', marker='o', markersize=2)
+            
+            ax.set_xlabel('Time (hours)', fontsize=9)
+            ax.set_ylabel('Optical Power (dBm)', fontsize=9)
+            ax.set_ylim(9, 13)
+            ax.set_xlim(0, 96)
+            ax.set_xticks(np.arange(0, 97, 12))
+            
+            ax.axhline(y=10.0, color='red', linestyle='--', linewidth=1.5, alpha=0.7, label='Endeavour Min (10 dBm)')
+            ax.axhline(y=12.3, color='red', linestyle='--', linewidth=1.5, alpha=0.7, label='Endeavour Max (12.3 dBm)')
+            ax.axhspan(10.0, 12.3, color='green', alpha=0.05)
+            
+            ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
+            ax.tick_params(labelsize=8)
+            ax.grid(True, alpha=0.3)
+            
+            handles, labels = ax.get_legend_handles_labels()
+            by_label = dict(zip(labels, handles))
+            ax.legend(by_label.values(), by_label.keys(), loc='best', fontsize=5, ncol=2)
+        
+        # Hide unused subplots
+        for plot_idx in range(len(tile_ids), 16):
+            axes[plot_idx].axis('off')
+        
+        plt.suptitle('Optical Power vs Time - All Tiles', fontsize=14, fontweight='bold', y=0.995)
+        plt.tight_layout()
+        
+        plot_filename = 'missionmode_power_all_tiles.png'
+        plt.savefig(output_path / plot_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ OFC plot saved: {plot_filename}")
+        print(f"  Figure size: 24 x 16 inches (6x4 per subplot)\n")
+    
