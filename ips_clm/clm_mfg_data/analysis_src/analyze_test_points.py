@@ -2071,7 +2071,7 @@ class tpanalysis:
         
         # Set up the plot style
         sns.set_style("whitegrid")
-        fig, ax = plt.subplots(figsize=(6, 2))
+        fig, ax = plt.subplots(figsize=(2, 4))
         
         # Define colors by bank (Red for Set A/Bank 1, Blue for Set B/Bank 0)
         bank_colors = {1: 'red', 0: 'blue'}  # Bank 1 = Set A (Red), Bank 0 = Set B (Blue)
@@ -2080,7 +2080,6 @@ class tpanalysis:
         box_data_positions = []
         box_data_values = []
         box_colors = []
-        x_labels = []
         
         for bank in [1, 0]:  # Set A (Bank 1) first, then Set B (Bank 0)
             df_bank = df[df['Bank'] == bank]
@@ -2096,8 +2095,6 @@ class tpanalysis:
                 x_scatter = np.random.normal(pos, 0.08, size=len(powers))
                 ax.scatter(x_scatter, powers, color='black', 
                           alpha=0.4, s=8, zorder=1)
-                
-                x_labels.append('Set A' if bank == 1 else 'Set B')
         
         # Create box plots
         bp = ax.boxplot(box_data_values, positions=box_data_positions, widths=0.4,
@@ -2112,12 +2109,12 @@ class tpanalysis:
             patch.set_facecolor(color)
             patch.set_alpha(0.6)
         
-        # Set x-axis labels
-        ax.set_xticks([0, 1])
-        ax.set_xticklabels(x_labels, fontsize=10)
+        # Set x-axis - hide labels, just show the two banks together
+        ax.set_xticks([0.5])
+        ax.set_xticklabels([''], fontsize=10)
+        ax.set_xlim(-0.5, 1.5)
         
-        # Labels (no title)
-        ax.set_xlabel('Bank', fontsize=11, fontweight='bold')
+        # Labels (no title, no x-axis label)
         ax.set_ylabel('Total Power in fiber (mW)', fontsize=11, fontweight='bold')
         ax.set_ylim(0, 200)
         ax.grid(True, alpha=0.3, axis='y')
