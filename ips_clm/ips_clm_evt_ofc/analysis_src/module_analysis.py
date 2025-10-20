@@ -5988,9 +5988,9 @@ class temperature_aggressors_2:
                 
                 # Each value in the array represents a channel
                 for channel_idx, value_uw in enumerate(pic_values_uw):
-                    # Special case: multiply tile 5, bank B by 7.25
+                    # Special case: multiply tile 5, bank B by 6.95
                     if tile_id == 5 and bank_type == 'BANK_B':
-                        value_uw = value_uw * 7.25
+                        value_uw = value_uw * 6.95
                     
                     # Convert from µW to dBm: dBm = 10 * log10(power_uW / 1000)
                     if value_uw > 0:
@@ -6021,7 +6021,7 @@ class temperature_aggressors_2:
         
         # Create the plot
         sns.set_style("whitegrid")
-        fig, ax = plt.subplots(figsize=(10, 4))
+        fig, ax = plt.subplots(figsize=(8, 4))
         
         # Define colors
         bank_colors = {'BANK_A': 'red', 'BANK_B': 'blue'}
@@ -6109,6 +6109,8 @@ class temperature_aggressors_2:
             bank_type = row['bank_type']
             try:
                 wl_ref = ast.literal_eval(row['wavelength_nm'])
+                # Apply 1e-9 factor to convert to nm
+                wl_ref = [w * 1e-9 for w in wl_ref]
                 ref_wavelengths[(tile_id, bank_type)] = wl_ref
             except:
                 continue
@@ -6135,7 +6137,9 @@ class temperature_aggressors_2:
             
             # Parse the wavelength_nm string as a list
             try:
-                wavelengths_nm = ast.literal_eval(row['wavelength_nm'])
+                wavelengths_raw = ast.literal_eval(row['wavelength_nm'])
+                # Apply 1e-9 factor to convert to nm
+                wavelengths_nm = [w * 1e-9 for w in wavelengths_raw]
                 
                 # Get reference wavelengths for this tile-bank combination
                 ref_wl = ref_wavelengths.get((tile_id, bank_type))
@@ -6175,7 +6179,7 @@ class temperature_aggressors_2:
         
         # Create the plot
         sns.set_style("whitegrid")
-        fig, ax = plt.subplots(figsize=(10, 4))
+        fig, ax = plt.subplots(figsize=(8, 4))
         
         # Define colors
         bank_colors = {'BANK_A': 'red', 'BANK_B': 'blue'}
@@ -6193,6 +6197,11 @@ class temperature_aggressors_2:
             ax.scatter(x, y, color=bank_colors[bank], alpha=0.6, s=30, 
                       label=bank_labels[bank], edgecolors='black', linewidth=0.3)
         
+        # Add mission mode target lines and shaded region
+        ax.axhline(y=20, color='red', linestyle='--', linewidth=1.5, alpha=0.7, label='Mission Mode Target')
+        ax.axhline(y=-20, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
+        ax.axhspan(-20, 20, color='green', alpha=0.1)
+        
         # Labels and formatting (no title)
         ax.set_xlabel('Tile ID', fontsize=12)
         ax.set_ylabel('Frequency Error (GHz)', fontsize=12)
@@ -6204,6 +6213,9 @@ class temperature_aggressors_2:
         unique_tiles = sorted(df_plot['tile_id'].unique())
         ax.set_xticks(unique_tiles)
         ax.set_xlim(min(unique_tiles) - 0.5, max(unique_tiles) + 0.5)
+        
+        # Set y-axis from -100 to 100 GHz
+        ax.set_ylim(-100, 100)
         
         plt.tight_layout()
         
