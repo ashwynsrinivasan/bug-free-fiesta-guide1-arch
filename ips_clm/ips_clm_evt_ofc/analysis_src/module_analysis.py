@@ -5992,19 +5992,24 @@ class temperature_aggressors_2:
                     if tile_id == 5 and bank_type == 'BANK_B':
                         value_uw = value_uw * 6.95
                     
-                    # Convert from µW to dBm: dBm = 10 * log10(power_uW / 1000)
-                    if value_uw > 0:
-                        value_dbm = 10 * np.log10(value_uw / 1000)
-                    else:
-                        value_dbm = np.nan
+                    # Convert from µW to mW
+                    value_mw = value_uw / 1000
                     
                     # Shift tile_id from 0-15 to 1-16
                     tile_id_shifted = tile_id + 1
                     
+                    # Calculate fiber number (1-32)
+                    # Fiber 1: Tile 1 Set A, Fiber 2: Tile 1 Set B, etc.
+                    if bank_type == 'BANK_A':
+                        fiber_num = (tile_id_shifted - 1) * 2 + 1
+                    else:  # BANK_B
+                        fiber_num = (tile_id_shifted - 1) * 2 + 2
+                    
                     data_to_plot.append({
+                        'fiber_num': fiber_num,
                         'tile_id': tile_id_shifted,
                         'bank_type': bank_type,
-                        'pic_mpd_value_dbm': value_dbm,
+                        'pic_mpd_value_mw': value_mw,
                         'channel': channel_idx
                     })
             except Exception as e:
@@ -6012,11 +6017,8 @@ class temperature_aggressors_2:
         
         df_plot = pd.DataFrame(data_to_plot)
         
-        # Remove NaN values
-        df_plot = df_plot.dropna(subset=['pic_mpd_value_dbm'])
-        
         print(f"Total data points to plot: {len(df_plot)}")
-        print(f"Tiles: {sorted(df_plot['tile_id'].unique())}")
+        print(f"Fiber numbers: {sorted(df_plot['fiber_num'].unique())}")
         print(f"Points per bank: {df_plot.groupby('bank_type').size()}")
         
         # Create the plot
@@ -6031,28 +6033,27 @@ class temperature_aggressors_2:
         for bank in ['BANK_A', 'BANK_B']:
             df_bank = df_plot[df_plot['bank_type'] == bank]
             
-            # Add jitter to tile_id for better visibility
+            # Add jitter to fiber_num for better visibility
             x_jitter = np.random.normal(0, 0.15, size=len(df_bank))
-            x = df_bank['tile_id'].values + x_jitter
-            y = df_bank['pic_mpd_value_dbm'].values
+            x = df_bank['fiber_num'].values + x_jitter
+            y = df_bank['pic_mpd_value_mw'].values
             
             ax.scatter(x, y, color=bank_colors[bank], alpha=0.6, s=30, 
                       label=bank_labels[bank], edgecolors='black', linewidth=0.3)
         
         # Labels and formatting (no title)
-        ax.set_xlabel('Tile ID', fontsize=12)
-        ax.set_ylabel('Optical Power in Fiber (dBm/ch)', fontsize=12)
+        ax.set_xlabel('Fiber #', fontsize=12)
+        ax.set_ylabel('Optical Power in Fiber (mW)', fontsize=12)
         ax.legend(fontsize=12, framealpha=0.9)
         ax.grid(True, alpha=0.3)
         ax.tick_params(labelsize=11)
         
-        # Set x-axis to show all tile IDs
-        unique_tiles = sorted(df_plot['tile_id'].unique())
-        ax.set_xticks(unique_tiles)
-        ax.set_xlim(min(unique_tiles) - 0.5, max(unique_tiles) + 0.5)
+        # Set x-axis to show fiber numbers 1-32
+        ax.set_xticks(range(1, 33))
+        ax.set_xlim(0.5, 32.5)
         
-        # Set y-axis from 7 to 13 dBm
-        ax.set_ylim(7, 13)
+        # Set y-axis from 0 to 20 mW
+        ax.set_ylim(0, 20)
         
         plt.tight_layout()
         
@@ -6162,7 +6163,14 @@ class temperature_aggressors_2:
                             # Shift tile_id from 0-15 to 1-16
                             tile_id_shifted = tile_id + 1
                             
+                            # Calculate fiber number (1-32)
+                            if bank_type == 'BANK_A':
+                                fiber_num = (tile_id_shifted - 1) * 2 + 1
+                            else:  # BANK_B
+                                fiber_num = (tile_id_shifted - 1) * 2 + 2
+                            
                             data_to_plot.append({
+                                'fiber_num': fiber_num,
                                 'tile_id': tile_id_shifted,
                                 'bank_type': bank_type,
                                 'freq_error_ghz': freq_error_ghz,
@@ -6174,7 +6182,7 @@ class temperature_aggressors_2:
         df_plot = pd.DataFrame(data_to_plot)
         
         print(f"Total data points to plot: {len(df_plot)}")
-        print(f"Tiles: {sorted(df_plot['tile_id'].unique())}")
+        print(f"Fiber numbers: {sorted(df_plot['fiber_num'].unique())}")
         print(f"Points per bank: {df_plot.groupby('bank_type').size()}")
         
         # Create the plot
@@ -6189,30 +6197,29 @@ class temperature_aggressors_2:
         for bank in ['BANK_A', 'BANK_B']:
             df_bank = df_plot[df_plot['bank_type'] == bank]
             
-            # Add jitter to tile_id for better visibility
+            # Add jitter to fiber_num for better visibility
             x_jitter = np.random.normal(0, 0.15, size=len(df_bank))
-            x = df_bank['tile_id'].values + x_jitter
+            x = df_bank['fiber_num'].values + x_jitter
             y = df_bank['freq_error_ghz'].values
             
             ax.scatter(x, y, color=bank_colors[bank], alpha=0.6, s=30, 
                       label=bank_labels[bank], edgecolors='black', linewidth=0.3)
         
-        # Add mission mode target lines and shaded region
-        ax.axhline(y=20, color='red', linestyle='--', linewidth=1.5, alpha=0.7, label='Mission Mode Target')
+        # Add mission mode target lines and shaded region (no label)
+        ax.axhline(y=20, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
         ax.axhline(y=-20, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
         ax.axhspan(-20, 20, color='green', alpha=0.1)
         
         # Labels and formatting (no title)
-        ax.set_xlabel('Tile ID', fontsize=12)
+        ax.set_xlabel('Fiber #', fontsize=12)
         ax.set_ylabel('Frequency Error (GHz)', fontsize=12)
         ax.legend(fontsize=12, framealpha=0.9)
         ax.grid(True, alpha=0.3)
         ax.tick_params(labelsize=11)
         
-        # Set x-axis to show all tile IDs
-        unique_tiles = sorted(df_plot['tile_id'].unique())
-        ax.set_xticks(unique_tiles)
-        ax.set_xlim(min(unique_tiles) - 0.5, max(unique_tiles) + 0.5)
+        # Set x-axis to show fiber numbers 1-32
+        ax.set_xticks(range(1, 33))
+        ax.set_xlim(0.5, 32.5)
         
         # Set y-axis from -100 to 100 GHz
         ax.set_ylim(-100, 100)
