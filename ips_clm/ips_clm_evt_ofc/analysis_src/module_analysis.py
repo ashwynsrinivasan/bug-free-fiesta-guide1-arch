@@ -461,7 +461,7 @@ class module_analysis:
                facecolor='white', edgecolor='orange', alpha=0.8))
         
         ax.set_xlabel('Time (seconds)', fontsize=10)
-        ax.set_ylabel('Optical Power (dBm)', fontsize=10)
+        ax.set_ylabel('Power in fiber (dBm)', fontsize=10)
         ax.set_xlim(0, 3000)
         ax.set_ylim(0, 14)
         ax.grid(True, alpha=0.3)
@@ -771,7 +771,7 @@ class module_analysis:
         
         # Set labels and title
         ax.set_xlabel('Seconds')
-        ax.set_ylabel('Power (dBm)')
+        ax.set_ylabel('Power in fiber (dBm)')
         ax.set_title(f'{spec_name} - Tile SN: {full_sn}\nHandshake Peak: B0={bank0_peak:.1f}dBm, B1={bank1_peak:.1f}dBm | Safety: B0={bank0_safety:.1f}dBm, B1={bank1_safety:.1f}dBm')
         ax.set_ylim(-10, 20)
         ax.legend(loc='best')
@@ -869,7 +869,7 @@ class module_analysis:
                    color='lightsalmon', marker='v', alpha=0.8)
         
         ax1.set_xlabel('Serial Number')
-        ax1.set_ylabel('Optical Power (dBm)')
+        ax1.set_ylabel('Power in fiber (dBm)')
         ax1.set_title('Endeavour - Handshake & Laser Safety Power')
         ax1.set_xticks(x)
         ax1.set_xticklabels(endeavour_data['sn'], rotation=45, ha='right')
@@ -890,7 +890,7 @@ class module_analysis:
                    color='lightsalmon', marker='v', alpha=0.8)
         
         ax2.set_xlabel('Serial Number')
-        ax2.set_ylabel('Optical Power (dBm)')
+        ax2.set_ylabel('Power in fiber (dBm)')
         ax2.set_title('Kenya - Handshake & Laser Safety Power')
         ax2.set_xticks(x)
         ax2.set_xticklabels(kenya_data['sn'], rotation=45, ha='right')
@@ -1082,7 +1082,7 @@ class module_analysis:
                     label=f'Ch{channel} Handshake', linewidth=2, markersize=3)
         
         ax1.set_xlabel('Time (s)')
-        ax1.set_ylabel('Power (dBm)')
+        ax1.set_ylabel('Power in fiber (dBm)')
         ax1.set_title(f'Bank 0 - Handshake Peak: {bank0_handshake_peak}, Safety: {bank0_safety_value}')
         ax1.set_ylim(-10, 20)
         ax1.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
@@ -1112,7 +1112,7 @@ class module_analysis:
                     label=f'Ch{channel} Handshake', linewidth=2, markersize=3)
         
         ax2.set_xlabel('Time (s)')
-        ax2.set_ylabel('Power (dBm)')
+        ax2.set_ylabel('Power in fiber (dBm)')
         ax2.set_title(f'Bank 1 - Handshake Peak: {bank1_handshake_peak}, Safety: {bank1_safety_value}')
         ax2.set_ylim(-10, 20)
         ax2.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
@@ -1306,7 +1306,7 @@ class module_analysis:
                     label=f'Ch{channel} Handshake', linewidth=2, markersize=3)
         
         ax1.set_xlabel('Time (s)')
-        ax1.set_ylabel('Power (dBm)')
+        ax1.set_ylabel('Power in fiber (dBm)')
         ax1.set_title(f'Bank 0 - Handshake Peak: {bank0_handshake_peak}, Safety: {bank0_safety_value}')
         ax1.set_ylim(-10, 20)
         ax1.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
@@ -1332,7 +1332,7 @@ class module_analysis:
                     label=f'Ch{channel} Handshake', linewidth=2, markersize=3)
         
         ax2.set_xlabel('Time (s)')
-        ax2.set_ylabel('Power (dBm)')
+        ax2.set_ylabel('Power in fiber (dBm)')
         ax2.set_title(f'Bank 1 - Handshake Peak: {bank1_handshake_peak}, Safety: {bank1_safety_value}')
         ax2.set_ylim(-10, 20)
         ax2.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
@@ -1584,7 +1584,7 @@ class module_analysis:
                                    color='green', alpha=0.1, label='Spec Range')
         
         ax.set_xlabel('Seconds')
-        ax.set_ylabel('Optical Power (dBm)')
+        ax.set_ylabel('Power in fiber (dBm)')
         ax.set_title(f'{spec_name} - Tile SN: {full_sn} - Mission Mode Power')
         
         # Set x-axis limits
@@ -1694,7 +1694,7 @@ class module_analysis:
         
         ax.set_yticks(positions)
         ax.set_yticklabels(labels_list)
-        ax.set_xlabel('Optical Power (dBm)')
+        ax.set_xlabel('Power in fiber (dBm)')
         ax.set_ylabel('Bank-Channel')
         
         # Add dashed line between B0 and B1
@@ -2133,7 +2133,7 @@ class module_analysis:
         # Set labels
         ax.set_xlabel('Tile SN')
         if data_type == 'power':
-            ylabel = 'Power (dBm)'
+            ylabel = 'Power in fiber (dBm)'
         elif data_type == 'freq':
             ylabel = 'Frequency Error (GHz)'
         else:  # smsr
@@ -3212,7 +3212,7 @@ class module_analysis:
                     ax.axhline(y=typ_power_dbm, color='green', linestyle=':', linewidth=2.0,
                               label=f'Typ: {typ_power_dbm}dBm', alpha=0.8)
             
-            ax.set_ylabel('Power (dBm)')
+            ax.set_ylabel('Power in fiber (dBm)')
             ax.set_title(f'{spec_name} - Calculated Laser Power vs. Time')
             ax.legend(loc='best', fontsize=6, ncol=4)
             ax.grid(True, alpha=0.3)
@@ -3686,7 +3686,7 @@ class temperature_aggressors_1:
         
         # Configure axes
         ax.set_xlabel('Time (seconds)', fontsize=11)
-        ax.set_ylabel('Optical Power (dBm)', fontsize=11)
+        ax.set_ylabel('Power in fiber (dBm)', fontsize=11)
         ax.set_xlim(0, 2500)
         ax.set_ylim(0, 10)
         ax_temp.set_ylabel('Temperature (°C)', fontsize=11, color='red')
@@ -4082,7 +4082,7 @@ class temperature_aggressors_2:
             
             # Configure axes
             ax.set_xlabel('Time (hours)', fontsize=9)
-            ax.set_ylabel('Optical Power (dBm)', fontsize=9)
+            ax.set_ylabel('Power in fiber (dBm)', fontsize=9)
             ax.set_ylim(9, 13)
             ax.set_xlim(0, 96)
             ax.set_xticks(np.arange(0, 97, 12))
@@ -4486,7 +4486,7 @@ class temperature_aggressors_2:
             
             # Configure axes
             ax.set_xlabel('Time (hours)', fontsize=9)
-            ax.set_ylabel('Optical Power (dBm)', fontsize=9, color='black')
+            ax.set_ylabel('Power in fiber (dBm)', fontsize=9, color='black')
             ax2.set_ylabel('Temperature (°C)', fontsize=9, color='red')
             ax.set_ylim(9, 13)
             ax.set_xlim(46, 48)
@@ -4899,7 +4899,7 @@ class temperature_aggressors_2:
             
             # Configure axes
             ax.set_xlabel('Time (hours)', fontsize=9)
-            ax.set_ylabel('Optical Power (dBm)', fontsize=9)
+            ax.set_ylabel('Power in fiber (dBm)', fontsize=9)
             ax.set_ylim(9, 13)
             ax.set_xlim(0, 96)
             ax.set_xticks(np.arange(0, 97, 12))
@@ -5189,7 +5189,7 @@ class temperature_aggressors_2:
             
             # Configure axes
             ax.set_xlabel('Time (hours)', fontsize=9)
-            ax.set_ylabel('Optical Power (dBm)', fontsize=9, color='black')
+            ax.set_ylabel('Power in fiber (dBm)', fontsize=9, color='black')
             ax2.set_ylabel('Temperature (°C)', fontsize=9, color='red')
             ax.set_ylim(9, 13)
             ax.set_xlim(46, 48)
@@ -5706,9 +5706,9 @@ class temperature_aggressors_2:
             ax2.plot(temp_hours, temp_values, color='red', linewidth=2, alpha=0.6,
                     linestyle='--', label='Case Temp')
             
-            ax.set_xlabel('Time (hours)', fontsize=9)
-            ax.set_ylabel('Frequency Error (GHz)', fontsize=9, color='black')
-            ax2.set_ylabel('Temperature (°C)', fontsize=9, color='red')
+            ax.set_xlabel('Time (hours)', fontsize=12)
+            ax.set_ylabel('Frequency Error (GHz)', fontsize=12, color='black')
+            ax2.set_ylabel('Temperature (°C)', fontsize=12, color='red')
             ax.set_ylim(-100, 100)
             ax.set_xlim(46, 48)
             ax2.tick_params(axis='y', labelcolor='red')
@@ -5718,11 +5718,11 @@ class temperature_aggressors_2:
             ax.axhspan(-20, 20, color='green', alpha=0.05)
             
             ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
-            ax.tick_params(labelsize=8)
+            ax.tick_params(labelsize=10)
             ax.grid(True, alpha=0.3)
             
             # Only show temperature legend
-            ax2.legend(loc='best', fontsize=7)
+            ax2.legend(loc='best', fontsize=10)
         
         # Hide unused subplots
         for plot_idx in range(len(tile_ids), 16):
@@ -5792,8 +5792,8 @@ class temperature_aggressors_2:
                                color=colors[ch_idx], linewidth=1.0, alpha=0.7,
                                marker='o', markersize=2)
             
-            ax.set_xlabel('Time (hours)', fontsize=9)
-            ax.set_ylabel('Optical Power (dBm)', fontsize=9)
+            ax.set_xlabel('Time (hours)', fontsize=12)
+            ax.set_ylabel('Power in fiber (dBm)', fontsize=12)
             ax.set_ylim(9, 13)
             ax.set_xlim(0, 96)
             ax.set_xticks(np.arange(0, 97, 12))
@@ -5803,7 +5803,7 @@ class temperature_aggressors_2:
             ax.axhspan(10.0, 12.3, color='green', alpha=0.05)
             
             ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
-            ax.tick_params(labelsize=8)
+            ax.tick_params(labelsize=10)
             ax.grid(True, alpha=0.3)
         
         # Hide unused subplots
@@ -5913,8 +5913,8 @@ class temperature_aggressors_2:
                                color=colors[ch_idx], linewidth=1.0, alpha=0.7,
                                marker='o', markersize=2)
             
-            ax.set_xlabel('Time (hours)', fontsize=9)
-            ax.set_ylabel('Frequency Error (GHz)', fontsize=9)
+            ax.set_xlabel('Time (hours)', fontsize=12)
+            ax.set_ylabel('Frequency Error (GHz)', fontsize=12)
             ax.set_ylim(-100, 100)
             ax.set_xlim(0, 96)
             ax.set_xticks(np.arange(0, 97, 12))
@@ -5924,7 +5924,7 @@ class temperature_aggressors_2:
             ax.axhspan(-20, 20, color='green', alpha=0.05)
             
             ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
-            ax.tick_params(labelsize=8)
+            ax.tick_params(labelsize=10)
             ax.grid(True, alpha=0.3)
         
         # Hide unused subplots

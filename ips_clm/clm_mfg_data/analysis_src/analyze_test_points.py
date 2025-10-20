@@ -1968,11 +1968,11 @@ class tpanalysis:
         # Set x-axis labels to channel numbers
         channel_positions = [i * 2 + 0.5 for i in range(8)]
         ax.set_xticks(channel_positions)
-        ax.set_xticklabels(x_labels, fontsize=10)
+        ax.set_xticklabels(x_labels, fontsize=11)
         
         # Labels (no title)
-        ax.set_xlabel('Channel', fontsize=9)
-        ax.set_ylabel('Frequency Error (GHz)', fontsize=9)
+        ax.set_xlabel('Channel', fontsize=12)
+        ax.set_ylabel('Frequency Error (GHz)', fontsize=12)
         ax.set_ylim(-100, 100)
         ax.grid(True, alpha=0.3, axis='y')
         
@@ -1982,7 +1982,7 @@ class tpanalysis:
             Patch(facecolor='red', alpha=0.6, edgecolor='black', label='Set A'),
             Patch(facecolor='blue', alpha=0.6, edgecolor='black', label='Set B')
         ]
-        ax.legend(handles=legend_elements, loc='upper left', fontsize=10, framealpha=0.9)
+        ax.legend(handles=legend_elements, loc='upper left', fontsize=12, framealpha=0.9)
         
         plt.tight_layout()
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
@@ -2042,11 +2042,11 @@ class tpanalysis:
         # Set x-axis labels to channel numbers
         channel_positions = [i * 2 + 0.5 for i in range(8)]
         ax.set_xticks(channel_positions)
-        ax.set_xticklabels(x_labels, fontsize=10)
+        ax.set_xticklabels(x_labels, fontsize=11)
         
         # Labels (no title)
-        ax.set_xlabel('Channel', fontsize=9)
-        ax.set_ylabel('Power in fiber (mW)', fontsize=9)
+        ax.set_xlabel('Channel', fontsize=12)
+        ax.set_ylabel('Power in fiber (mW)', fontsize=12)
         ax.set_ylim(0, 20)
         ax.grid(True, alpha=0.3, axis='y')
         
@@ -2056,7 +2056,7 @@ class tpanalysis:
             Patch(facecolor='red', alpha=0.6, edgecolor='black', label='Set A'),
             Patch(facecolor='blue', alpha=0.6, edgecolor='black', label='Set B')
         ]
-        ax.legend(handles=legend_elements, loc='upper left', fontsize=10, framealpha=0.9)
+        ax.legend(handles=legend_elements, loc='upper left', fontsize=12, framealpha=0.9)
         
         plt.tight_layout()
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
@@ -2111,11 +2111,11 @@ class tpanalysis:
         
         # Set x-axis - hide labels, just show the two banks together
         ax.set_xticks([0.5])
-        ax.set_xticklabels([''], fontsize=10)
+        ax.set_xticklabels([''], fontsize=11)
         ax.set_xlim(-0.5, 1.5)
         
         # Labels (no title, no x-axis label)
-        ax.set_ylabel('Total Power in fiber (mW)', fontsize=9)
+        ax.set_ylabel('Total Power in fiber (mW)', fontsize=12)
         ax.set_ylim(0, 200)
         ax.grid(True, alpha=0.3, axis='y')
         
@@ -2125,12 +2125,181 @@ class tpanalysis:
             Patch(facecolor='red', alpha=0.6, edgecolor='black', label='Set A'),
             Patch(facecolor='blue', alpha=0.6, edgecolor='black', label='Set B')
         ]
-        ax.legend(handles=legend_elements, loc='upper left', fontsize=10, framealpha=0.9)
+        ax.legend(handles=legend_elements, loc='upper left', fontsize=12, framealpha=0.9)
         
         plt.tight_layout()
         plt.savefig(output_path, dpi=300, bbox_inches='tight')
         plt.close()
         print(f"Saved: {output_path}")
+    
+    def plot_osa_spectrum(self):
+        """
+        Plot OSA spectrum from OSA-TP2 MaxMPD.csv files.
+        Matches with TP2-4 temperature data for each serial number.
+        """
+        print("Starting OSA Spectrum Analysis...")
+        
+        # Create OSA output folder
+        osa_path = self.results_path / "OSA"
+        osa_path.mkdir(exist_ok=True)
+        
+        # Get all TP2-4 CSV files to find serial numbers and temperatures
+        tp2_4_path = self.v2_path / "TP2-4"
+        tp2_4_files = list(tp2_4_path.glob("*-TP2-4*.csv"))
+        
+        print(f"Found {len(tp2_4_files)} TP2-4 files")
+        
+        # Track processed serial numbers to avoid duplicates
+        processed_sns = set()
+        
+        # For each TP2-4 file, get the serial number and temperatures
+        for tp2_4_file in tp2_4_files:
+            # Extract serial number from filename
+            # Format: 2025-08-19T13_58_04-Y2532000052-TP2-4 Scan.csv
+            filename = tp2_4_file.stem
+            parts = filename.split('-')
+            # The SN is the part that starts with 'Y' or is numeric with length > 4
+            sn = None
+            for part in parts:
+                if part.startswith('Y') or (part.isdigit() and len(part) > 4):
+                    sn = part
+                    break
+            
+            if sn is None or sn in processed_sns:
+                continue
+            
+            processed_sns.add(sn)
+            
+            # Read TP2-4 file to get T_PIC temperatures
+            try:
+                df_tp24 = pd.read_csv(tp2_4_file)
+                if df_tp24.empty or 'T_PIC(C)' not in df_tp24.columns:
+                    print(f"  Skipping {sn}: No temperature data")
+                    continue
+                
+                # Get unique PIC temperatures
+                temps = df_tp24['T_PIC(C)'].unique()
+                print(f"\nProcessing {sn}: Found {len(temps)} temperature(s)")
+                
+                # Find matching OSA-TP2 folder
+                osa_folders = list((self.v2_path / "OSA-TP2").glob(f"*-{sn}-*"))
+                if not osa_folders:
+                    print(f"  Warning: No OSA-TP2 folder found for {sn}")
+                    continue
+                
+                # Use the first matching folder
+                osa_folder = osa_folders[0]
+                print(f"  Found OSA folder: {osa_folder.name}")
+                
+                # Plot spectrum for this serial number
+                output_file = osa_path / f"TP2_OSASpectrum_{sn}.png"
+                self._plot_osa_spectrum_for_sn(sn, temps, osa_folder, output_file)
+                
+            except Exception as e:
+                print(f"  Error processing {sn}: {e}")
+                continue
+        
+        print(f"\nOSA Spectrum Analysis completed! Processed {len(processed_sns)} tiles")
+        print(f"Plots saved to: {osa_path}")
+    
+    def _plot_osa_spectrum_for_sn(self, sn, temps, osa_folder, output_path):
+        """Plot OSA spectrum for a given serial number at specified temperatures."""
+        
+        # Create figure with single subplot
+        sns.set_style("whitegrid")
+        fig, ax = plt.subplots(figsize=(10, 4))
+        
+        # Use the first temperature (typically around 48°C)
+        target_temp = temps[0]
+        print(f"  Plotting for temperature: {target_temp:.2f}°C")
+        
+        # Define ITU grid wavelengths for O-band
+        # Set A (Bank 0) - 8 channels with ~100 GHz spacing
+        itu_wavelengths_setA = [1301.4, 1303.7, 1306.0, 1308.3, 1310.6, 1312.9, 1315.2, 1317.5]
+        
+        # Set B (Bank 1) - 8 channels offset by ~50 GHz (~0.4 nm) from Set A
+        itu_wavelengths_setB = [1302.6, 1304.8, 1307.1, 1309.4, 1311.8, 1314.1, 1316.4, 1318.7]
+        
+        # Convert ±20 GHz to wavelength tolerance
+        # At ~1310 nm: Δλ = (λ²/c) × Δf = (1310e-9)² / (3e8) × 20e9 ≈ 0.114 nm
+        wavelength_tolerance = 0.114  # nm
+        
+        # Add shaded tolerance bands around each ITU wavelength for Set A (red-tinted)
+        for wl in itu_wavelengths_setA:
+            ax.axvspan(wl - wavelength_tolerance, wl + wavelength_tolerance, 
+                      alpha=0.08, color='red', zorder=0)
+        
+        # Add shaded tolerance bands around each ITU wavelength for Set B (blue-tinted)
+        for wl in itu_wavelengths_setB:
+            ax.axvspan(wl - wavelength_tolerance, wl + wavelength_tolerance, 
+                      alpha=0.08, color='blue', zorder=0)
+        
+        # Define colors: Bank 0 = Set A (Red), Bank 1 = Set B (Blue)
+        bank_colors = {0: 'red', 1: 'blue'}
+        bank_labels = {0: 'Set A', 1: 'Set B'}
+        
+        for bank in [0, 1]:
+            # Find the closest MaxMPD file for this bank and temperature
+            # Look for files like: Bank0_Channel1-8_Temp48.07_MaxMPDmA.csv
+            maxmpd_files = list(osa_folder.glob(f"Bank{bank}_Channel1-8_Temp*_MaxMPDmA.csv"))
+            
+            if not maxmpd_files:
+                print(f"    Warning: No OSA data for Bank {bank}")
+                continue
+            
+            # Find file with closest temperature
+            best_file = None
+            min_temp_diff = float('inf')
+            for file in maxmpd_files:
+                # Extract temperature from filename
+                temp_str = file.stem.split('_Temp')[1].split('_')[0]
+                try:
+                    file_temp = float(temp_str)
+                    temp_diff = abs(file_temp - target_temp)
+                    if temp_diff < min_temp_diff:
+                        min_temp_diff = temp_diff
+                        best_file = file
+                except:
+                    continue
+            
+            if best_file is None:
+                print(f"    Warning: No OSA data for Bank {bank}")
+                continue
+            
+            print(f"    Bank {bank}: Using {best_file.name}")
+            
+            # Read the spectrum data
+            try:
+                df_spec = pd.read_csv(best_file, header=None, names=['Wavelength_nm', 'Power_dBm'])
+                
+                # Add 5dB to all power values
+                df_spec['Power_dBm'] = df_spec['Power_dBm'] + 5.0
+                
+                # Plot the spectrum with increased linewidth
+                ax.plot(df_spec['Wavelength_nm'], df_spec['Power_dBm'], 
+                       color=bank_colors[bank], linewidth=2.0, alpha=0.8, 
+                       label=bank_labels[bank], zorder=2)
+                
+            except Exception as e:
+                print(f"    Error reading {best_file.name}: {e}")
+        
+        # Set labels and formatting (no title)
+        ax.set_xlabel('Wavelength (nm)', fontsize=12, fontweight='bold')
+        ax.set_ylabel('Power (dBm)', fontsize=12, fontweight='bold')
+        ax.tick_params(labelsize=11)
+        ax.grid(True, alpha=0.3, zorder=1)
+        ax.set_xlim(1300, 1320)
+        
+        # Set y-axis limits
+        ax.set_ylim(-60, 20)
+        
+        # Add legend
+        ax.legend(loc='upper left', fontsize=11, framealpha=0.9)
+        
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"  Saved: {output_path.name}")
 
 
 if __name__ == "__main__":
