@@ -5988,9 +5988,9 @@ class temperature_aggressors_2:
                 
                 # Each value in the array represents a channel
                 for channel_idx, value_uw in enumerate(pic_values_uw):
-                    # Special case: multiply tile 5, bank B by 6
+                    # Special case: multiply tile 5, bank B by 8
                     if tile_id == 5 and bank_type == 'BANK_B':
-                        value_uw = value_uw * 6
+                        value_uw = value_uw * 8
                     
                     # Convert from µW to dBm: dBm = 10 * log10(power_uW / 1000)
                     if value_uw > 0:
@@ -5998,8 +5998,11 @@ class temperature_aggressors_2:
                     else:
                         value_dbm = np.nan
                     
+                    # Shift tile_id from 0-15 to 1-16
+                    tile_id_shifted = tile_id + 1
+                    
                     data_to_plot.append({
-                        'tile_id': tile_id,
+                        'tile_id': tile_id_shifted,
                         'bank_type': bank_type,
                         'pic_mpd_value_dbm': value_dbm,
                         'channel': channel_idx
@@ -6036,10 +6039,9 @@ class temperature_aggressors_2:
             ax.scatter(x, y, color=bank_colors[bank], alpha=0.6, s=30, 
                       label=bank_labels[bank], edgecolors='black', linewidth=0.3)
         
-        # Labels and formatting
+        # Labels and formatting (no title)
         ax.set_xlabel('Tile ID', fontsize=12)
-        ax.set_ylabel('PIC MPD Value (dBm)', fontsize=12)
-        ax.set_title('Optical Power at 30°C (Last Run)', fontsize=14, fontweight='bold')
+        ax.set_ylabel('Optical Power in Fiber (dBm/ch)', fontsize=12)
         ax.legend(fontsize=12, framealpha=0.9)
         ax.grid(True, alpha=0.3)
         ax.tick_params(labelsize=11)
