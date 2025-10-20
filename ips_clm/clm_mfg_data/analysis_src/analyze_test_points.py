@@ -1888,17 +1888,35 @@ class tpanalysis:
                             (df_power['Power(mW)'] <= power_max)]
         print(f"After OFC power filter: {len(df_power)} records (within {power_min} to {power_max} mW)")
         
+        # Load TP2-5 data for total power (average per bank)
+        print("\nLoading TP2-5 data for total power...")
+        df_totalpower_v1 = self._load_tp2p5_totalpower_data(self.v1_path / "TP2-5", valid_tiles['v1'])
+        df_totalpower_v2 = self._load_tp2p5_totalpower_data(self.v2_path / "TP2-5", valid_tiles['v2'])
+        df_totalpower_v1['Version'] = 'v1'
+        df_totalpower_v2['Version'] = 'v2'
+        df_totalpower = pd.concat([df_totalpower_v1, df_totalpower_v2], ignore_index=True)
+        print(f"Loaded {len(df_totalpower)} total power records")
+        
+        # Apply filter for total power (sum across 8 channels)
+        # Total power is 8x individual channel power: 60 to 160 mW (8 channels * 7.5-20 mW range)
+        df_totalpower = df_totalpower[(df_totalpower['Total_Power_mW'] >= 60.0) & 
+                                      (df_totalpower['Total_Power_mW'] <= 160.0)]
+        print(f"After power filter: {len(df_totalpower)} total power records (within 60.0 to 160.0 mW)")
+        
         # Plot frequency error
         self._plot_ofc_freq_error(df_freq, ofc_path / "ofc_freq_error.png")
         
         # Plot power
         self._plot_ofc_power(df_power, ofc_path / "ofc_power.png")
         
+        # Plot total power
+        self._plot_ofc_total_power(df_totalpower, ofc_path / "ofc_total_power.png")
+        
         print("\nOFC Plotter completed!")
         print(f"Plots saved to: {ofc_path}")
     
     def _plot_ofc_freq_error(self, df, output_path):
-        """Create OFC frequency error scatter plot with all data points."""
+        """Create OFC frequency error plot with box plots and scatter points."""
         if df.empty:
             print("No data available for frequency error plot")
             return
@@ -1909,8 +1927,11 @@ class tpanalysis:
         
         # Define colors by bank (Red for Set A/Bank 1, Blue for Set B/Bank 0)
         bank_colors = {1: 'red', 0: 'blue'}  # Bank 1 = Set A (Red), Bank 0 = Set B (Blue)
-        bank_markers = {1: 'o', 0: '^'}  # Circle for Set A, Triangle for Set B
         
+        # Prepare data for box plots
+        box_data_positions = []
+        box_data_values = []
+        box_colors = []
         x_labels = []
         
         for channel in range(8):
@@ -1920,13 +1941,29 @@ class tpanalysis:
                     errors = df_channel['Frequency_Error_GHz'].values
                     pos = channel * 2 + (0 if bank == 1 else 1)  # Set A on left, Set B on right
                     
-                    # Add scatter plot with all data points
-                    x_scatter = np.random.normal(pos, 0.1, size=len(errors))
-                    ax.scatter(x_scatter, errors, color=bank_colors[bank], 
-                              alpha=0.7, s=30, marker=bank_markers[bank],
-                              edgecolors='black', linewidth=0.5)
+                    box_data_positions.append(pos)
+                    box_data_values.append(errors)
+                    box_colors.append(bank_colors[bank])
+                    
+                    # Add scatter plot with small black dots
+                    x_scatter = np.random.normal(pos, 0.08, size=len(errors))
+                    ax.scatter(x_scatter, errors, color='black', 
+                              alpha=0.4, s=8, zorder=1)
             
             x_labels.append(f'Ch{channel+1}')
+        
+        # Create box plots
+        bp = ax.boxplot(box_data_values, positions=box_data_positions, widths=0.4,
+                        patch_artist=True, showfliers=False,
+                        boxprops=dict(linewidth=1.5, zorder=2),
+                        whiskerprops=dict(linewidth=1.5, zorder=2),
+                        capprops=dict(linewidth=1.5, zorder=2),
+                        medianprops=dict(linewidth=2, color='black', zorder=3))
+        
+        # Color the boxes by bank
+        for patch, color in zip(bp['boxes'], box_colors):
+            patch.set_facecolor(color)
+            patch.set_alpha(0.6)
         
         # Set x-axis labels to channel numbers
         channel_positions = [i * 2 + 0.5 for i in range(8)]
@@ -1940,12 +1977,10 @@ class tpanalysis:
         ax.grid(True, alpha=0.3, axis='y')
         
         # Create legend
-        from matplotlib.lines import Line2D
+        from matplotlib.patches import Patch
         legend_elements = [
-            Line2D([0], [0], marker='o', color='w', markerfacecolor='red', 
-                   markersize=8, markeredgecolor='black', label='Set A', alpha=0.7),
-            Line2D([0], [0], marker='^', color='w', markerfacecolor='blue', 
-                   markersize=8, markeredgecolor='black', label='Set B', alpha=0.7)
+            Patch(facecolor='red', alpha=0.6, edgecolor='black', label='Set A'),
+            Patch(facecolor='blue', alpha=0.6, edgecolor='black', label='Set B')
         ]
         ax.legend(handles=legend_elements, loc='upper left', fontsize=10, framealpha=0.9)
         
@@ -1955,7 +1990,7 @@ class tpanalysis:
         print(f"Saved: {output_path}")
     
     def _plot_ofc_power(self, df, output_path):
-        """Create OFC power scatter plot with all data points."""
+        """Create OFC power plot with box plots and scatter points."""
         if df.empty:
             print("No data available for power plot")
             return
@@ -1966,8 +2001,11 @@ class tpanalysis:
         
         # Define colors by bank (Red for Set A/Bank 1, Blue for Set B/Bank 0)
         bank_colors = {1: 'red', 0: 'blue'}  # Bank 1 = Set A (Red), Bank 0 = Set B (Blue)
-        bank_markers = {1: 'o', 0: '^'}  # Circle for Set A, Triangle for Set B
         
+        # Prepare data for box plots
+        box_data_positions = []
+        box_data_values = []
+        box_colors = []
         x_labels = []
         
         for channel in range(8):
@@ -1977,13 +2015,29 @@ class tpanalysis:
                     powers = df_channel['Power(mW)'].values
                     pos = channel * 2 + (0 if bank == 1 else 1)  # Set A on left, Set B on right
                     
-                    # Add scatter plot with all data points
-                    x_scatter = np.random.normal(pos, 0.1, size=len(powers))
-                    ax.scatter(x_scatter, powers, color=bank_colors[bank], 
-                              alpha=0.7, s=30, marker=bank_markers[bank],
-                              edgecolors='black', linewidth=0.5)
+                    box_data_positions.append(pos)
+                    box_data_values.append(powers)
+                    box_colors.append(bank_colors[bank])
+                    
+                    # Add scatter plot with small black dots
+                    x_scatter = np.random.normal(pos, 0.08, size=len(powers))
+                    ax.scatter(x_scatter, powers, color='black', 
+                              alpha=0.4, s=8, zorder=1)
             
             x_labels.append(f'Ch{channel+1}')
+        
+        # Create box plots
+        bp = ax.boxplot(box_data_values, positions=box_data_positions, widths=0.4,
+                        patch_artist=True, showfliers=False,
+                        boxprops=dict(linewidth=1.5, zorder=2),
+                        whiskerprops=dict(linewidth=1.5, zorder=2),
+                        capprops=dict(linewidth=1.5, zorder=2),
+                        medianprops=dict(linewidth=2, color='black', zorder=3))
+        
+        # Color the boxes by bank
+        for patch, color in zip(bp['boxes'], box_colors):
+            patch.set_facecolor(color)
+            patch.set_alpha(0.6)
         
         # Set x-axis labels to channel numbers
         channel_positions = [i * 2 + 0.5 for i in range(8)]
@@ -1992,17 +2046,87 @@ class tpanalysis:
         
         # Labels (no title)
         ax.set_xlabel('Channel', fontsize=11, fontweight='bold')
-        ax.set_ylabel('Power (mW)', fontsize=11, fontweight='bold')
+        ax.set_ylabel('Power in fiber (mW)', fontsize=11, fontweight='bold')
         ax.set_ylim(0, 20)
         ax.grid(True, alpha=0.3, axis='y')
         
         # Create legend
-        from matplotlib.lines import Line2D
+        from matplotlib.patches import Patch
         legend_elements = [
-            Line2D([0], [0], marker='o', color='w', markerfacecolor='red', 
-                   markersize=8, markeredgecolor='black', label='Set A', alpha=0.7),
-            Line2D([0], [0], marker='^', color='w', markerfacecolor='blue', 
-                   markersize=8, markeredgecolor='black', label='Set B', alpha=0.7)
+            Patch(facecolor='red', alpha=0.6, edgecolor='black', label='Set A'),
+            Patch(facecolor='blue', alpha=0.6, edgecolor='black', label='Set B')
+        ]
+        ax.legend(handles=legend_elements, loc='upper left', fontsize=10, framealpha=0.9)
+        
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"Saved: {output_path}")
+    
+    def _plot_ofc_total_power(self, df, output_path):
+        """Create OFC total power plot with box plots and scatter points (per bank)."""
+        if df.empty:
+            print("No data available for total power plot")
+            return
+        
+        # Set up the plot style
+        sns.set_style("whitegrid")
+        fig, ax = plt.subplots(figsize=(6, 2))
+        
+        # Define colors by bank (Red for Set A/Bank 1, Blue for Set B/Bank 0)
+        bank_colors = {1: 'red', 0: 'blue'}  # Bank 1 = Set A (Red), Bank 0 = Set B (Blue)
+        
+        # Prepare data for box plots
+        box_data_positions = []
+        box_data_values = []
+        box_colors = []
+        x_labels = []
+        
+        for bank in [1, 0]:  # Set A (Bank 1) first, then Set B (Bank 0)
+            df_bank = df[df['Bank'] == bank]
+            if not df_bank.empty:
+                powers = df_bank['Total_Power_mW'].values
+                pos = 0 if bank == 1 else 1  # Set A on left (0), Set B on right (1)
+                
+                box_data_positions.append(pos)
+                box_data_values.append(powers)
+                box_colors.append(bank_colors[bank])
+                
+                # Add scatter plot with small black dots
+                x_scatter = np.random.normal(pos, 0.08, size=len(powers))
+                ax.scatter(x_scatter, powers, color='black', 
+                          alpha=0.4, s=8, zorder=1)
+                
+                x_labels.append('Set A' if bank == 1 else 'Set B')
+        
+        # Create box plots
+        bp = ax.boxplot(box_data_values, positions=box_data_positions, widths=0.4,
+                        patch_artist=True, showfliers=False,
+                        boxprops=dict(linewidth=1.5, zorder=2),
+                        whiskerprops=dict(linewidth=1.5, zorder=2),
+                        capprops=dict(linewidth=1.5, zorder=2),
+                        medianprops=dict(linewidth=2, color='black', zorder=3))
+        
+        # Color the boxes by bank
+        for patch, color in zip(bp['boxes'], box_colors):
+            patch.set_facecolor(color)
+            patch.set_alpha(0.6)
+        
+        # Set x-axis labels
+        ax.set_xticks([0, 1])
+        ax.set_xticklabels(x_labels, fontsize=10)
+        
+        # Labels (no title)
+        ax.set_xlabel('Bank', fontsize=11, fontweight='bold')
+        ax.set_ylabel('Total Power in fiber (mW)', fontsize=11, fontweight='bold')
+        ax.set_ylim(0, 200)
+        ax.grid(True, alpha=0.3, axis='y')
+        
+        # Create legend
+        from matplotlib.patches import Patch
+        legend_elements = [
+            Patch(facecolor='red', alpha=0.6, edgecolor='black', label='Set A'),
+            Patch(facecolor='blue', alpha=0.6, edgecolor='black', label='Set B')
         ]
         ax.legend(handles=legend_elements, loc='upper left', fontsize=10, framealpha=0.9)
         
