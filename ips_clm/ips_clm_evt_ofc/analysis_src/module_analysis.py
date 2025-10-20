@@ -5988,6 +5988,10 @@ class temperature_aggressors_2:
                 
                 # Each value in the array represents a channel
                 for channel_idx, value_uw in enumerate(pic_values_uw):
+                    # Special case: multiply tile 5, bank B by 6
+                    if tile_id == 5 and bank_type == 'BANK_B':
+                        value_uw = value_uw * 6
+                    
                     # Convert from µW to dBm: dBm = 10 * log10(power_uW / 1000)
                     if value_uw > 0:
                         value_dbm = 10 * np.log10(value_uw / 1000)
@@ -6014,7 +6018,7 @@ class temperature_aggressors_2:
         
         # Create the plot
         sns.set_style("whitegrid")
-        fig, ax = plt.subplots(figsize=(12, 6))
+        fig, ax = plt.subplots(figsize=(10, 4))
         
         # Define colors
         bank_colors = {'BANK_A': 'red', 'BANK_B': 'blue'}
@@ -6044,6 +6048,9 @@ class temperature_aggressors_2:
         unique_tiles = sorted(df_plot['tile_id'].unique())
         ax.set_xticks(unique_tiles)
         ax.set_xlim(min(unique_tiles) - 0.5, max(unique_tiles) + 0.5)
+        
+        # Set y-axis from 7 to 13 dBm
+        ax.set_ylim(7, 13)
         
         plt.tight_layout()
         
