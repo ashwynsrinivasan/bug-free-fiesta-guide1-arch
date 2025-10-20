@@ -5988,9 +5988,9 @@ class temperature_aggressors_2:
                 
                 # Each value in the array represents a channel
                 for channel_idx, value_uw in enumerate(pic_values_uw):
-                    # Special case: multiply tile 5, bank B by 7.5
+                    # Special case: multiply tile 5, bank B by 7.25
                     if tile_id == 5 and bank_type == 'BANK_B':
-                        value_uw = value_uw * 7.5
+                        value_uw = value_uw * 7.25
                     
                     # Convert from µW to dBm: dBm = 10 * log10(power_uW / 1000)
                     if value_uw > 0:
@@ -6071,5 +6071,153 @@ class temperature_aggressors_2:
         print(f"  ✓ Plot saved: optical_power_30C.png")
         print(f"  Location: {output_dir}")
         print("\n30C Operation Analysis Complete!")
+        print("="*80)
+    
+    def analyze_30C_freq_error(self):
+        """
+        Analyze 30C operation frequency error data from '30 and 45 deg data.xlsx' file.
+        Analyzes only the last run_id and plots frequency error vs tile_id.
+        """
+        print("\n" + "="*80)
+        print("ANALYZING 30C FREQUENCY ERROR DATA")
+        print("="*80)
+        
+        # Path to the Excel file
+        excel_file = self.base_path / 'temperature_aggressors' / '30 and 45 deg data.xlsx'
+        
+        if not excel_file.exists():
+            print(f"Error: Excel file not found at {excel_file}")
+            return
+        
+        # Read the 30C tab
+        try:
+            df_30c = pd.read_excel(excel_file, sheet_name='30C')
+            print(f"Loaded 30C data: {df_30c.shape}")
+        except Exception as e:
+            print(f"Error reading Excel file: {e}")
+            return
+        
+        # Get the first run_id for reference wavelengths
+        first_run_id = df_30c['run_id'].min()
+        df_reference = df_30c[df_30c['run_id'] == first_run_id]
+        print(f"Reference run_id: {first_run_id}")
+        
+        # Store reference wavelengths for each tile and bank
+        ref_wavelengths = {}
+        for idx, row in df_reference.iterrows():
+            tile_id = row['tile_id']
+            bank_type = row['bank_type']
+            try:
+                wl_ref = ast.literal_eval(row['wavelength_nm'])
+                ref_wavelengths[(tile_id, bank_type)] = wl_ref
+            except:
+                continue
+        
+        print(f"Loaded reference wavelengths for {len(ref_wavelengths)} tile-bank combinations")
+        
+        # Get the last run_id
+        last_run_id = df_30c['run_id'].max()
+        print(f"Last run_id: {last_run_id}")
+        
+        # Filter to last run_id only
+        df_last = df_30c[df_30c['run_id'] == last_run_id]
+        print(f"Data shape for last run_id: {df_last.shape}")
+        print(f"Tiles: {sorted(df_last['tile_id'].unique())}")
+        print(f"Banks: {df_last['bank_type'].unique()}")
+        
+        # Parse wavelength_nm and calculate frequency error
+        data_to_plot = []
+        c_speed_light = 299792458  # m/s
+        
+        for idx, row in df_last.iterrows():
+            tile_id = row['tile_id']
+            bank_type = row['bank_type']
+            
+            # Parse the wavelength_nm string as a list
+            try:
+                wavelengths_nm = ast.literal_eval(row['wavelength_nm'])
+                
+                # Get reference wavelengths for this tile-bank combination
+                ref_wl = ref_wavelengths.get((tile_id, bank_type))
+                
+                if ref_wl is None:
+                    continue
+                
+                # Each value in the array represents a channel
+                for channel_idx, wl_nm in enumerate(wavelengths_nm):
+                    if channel_idx < len(ref_wl):
+                        ref_wl_nm = ref_wl[channel_idx]
+                        
+                        # Calculate frequency error
+                        # freq = c / wavelength
+                        if wl_nm > 0 and ref_wl_nm > 0:
+                            measured_freq_thz = c_speed_light / (wl_nm * 1e-9) / 1e12
+                            ref_freq_thz = c_speed_light / (ref_wl_nm * 1e-9) / 1e12
+                            freq_error_ghz = (measured_freq_thz - ref_freq_thz) * 1000
+                            
+                            # Shift tile_id from 0-15 to 1-16
+                            tile_id_shifted = tile_id + 1
+                            
+                            data_to_plot.append({
+                                'tile_id': tile_id_shifted,
+                                'bank_type': bank_type,
+                                'freq_error_ghz': freq_error_ghz,
+                                'channel': channel_idx
+                            })
+            except Exception as e:
+                continue
+        
+        df_plot = pd.DataFrame(data_to_plot)
+        
+        print(f"Total data points to plot: {len(df_plot)}")
+        print(f"Tiles: {sorted(df_plot['tile_id'].unique())}")
+        print(f"Points per bank: {df_plot.groupby('bank_type').size()}")
+        
+        # Create the plot
+        sns.set_style("whitegrid")
+        fig, ax = plt.subplots(figsize=(10, 4))
+        
+        # Define colors
+        bank_colors = {'BANK_A': 'red', 'BANK_B': 'blue'}
+        bank_labels = {'BANK_A': 'Set A', 'BANK_B': 'Set B'}
+        
+        # Plot for each bank
+        for bank in ['BANK_A', 'BANK_B']:
+            df_bank = df_plot[df_plot['bank_type'] == bank]
+            
+            # Add jitter to tile_id for better visibility
+            x_jitter = np.random.normal(0, 0.15, size=len(df_bank))
+            x = df_bank['tile_id'].values + x_jitter
+            y = df_bank['freq_error_ghz'].values
+            
+            ax.scatter(x, y, color=bank_colors[bank], alpha=0.6, s=30, 
+                      label=bank_labels[bank], edgecolors='black', linewidth=0.3)
+        
+        # Labels and formatting (no title)
+        ax.set_xlabel('Tile ID', fontsize=12)
+        ax.set_ylabel('Frequency Error (GHz)', fontsize=12)
+        ax.legend(fontsize=12, framealpha=0.9)
+        ax.grid(True, alpha=0.3)
+        ax.tick_params(labelsize=11)
+        
+        # Set x-axis to show all tile IDs
+        unique_tiles = sorted(df_plot['tile_id'].unique())
+        ax.set_xticks(unique_tiles)
+        ax.set_xlim(min(unique_tiles) - 0.5, max(unique_tiles) + 0.5)
+        
+        plt.tight_layout()
+        
+        # Create output directory
+        output_dir = self.base_path / 'analysis_results' / 'temperature_aggressors' / 'ofc' / 'operation_30C'
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Save the plot
+        output_path = output_dir / 'freq_error_30C.png'
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ Plot saved: freq_error_30C.png")
+        print(f"  Location: {output_dir}")
+        print("\n30C Frequency Error Analysis Complete!")
         print("="*80)
     
