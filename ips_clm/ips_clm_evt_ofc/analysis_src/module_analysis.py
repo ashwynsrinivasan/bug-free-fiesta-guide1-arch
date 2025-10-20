@@ -6042,7 +6042,7 @@ class temperature_aggressors_2:
         
         # Create the plot
         sns.set_style("whitegrid")
-        fig, ax = plt.subplots(figsize=(12, 4))
+        fig, ax = plt.subplots(figsize=(8, 4))
         
         # Define colors
         bank_colors = {'BANK_A': 'red', 'BANK_B': 'blue'}
@@ -6061,7 +6061,7 @@ class temperature_aggressors_2:
                       label=bank_labels[bank], edgecolors='black', linewidth=0.3)
         
         # Labels and formatting (no title)
-        ax.set_xlabel('Fiber #', fontsize=12)
+        ax.set_xlabel('Fiber Output in DWDM Laser Module', fontsize=12)
         ax.set_ylabel('Optical Power in Fiber (mW)', fontsize=12)
         ax.legend(fontsize=12, framealpha=0.9)
         ax.grid(True, alpha=0.3)
@@ -6206,7 +6206,7 @@ class temperature_aggressors_2:
         
         # Create the plot
         sns.set_style("whitegrid")
-        fig, ax = plt.subplots(figsize=(12, 4))
+        fig, ax = plt.subplots(figsize=(8, 4))
         
         # Define colors
         bank_colors = {'BANK_A': 'red', 'BANK_B': 'blue'}
@@ -6230,7 +6230,7 @@ class temperature_aggressors_2:
         ax.axhspan(-20, 20, color='green', alpha=0.1)
         
         # Labels and formatting (no title)
-        ax.set_xlabel('Fiber #', fontsize=12)
+        ax.set_xlabel('Fiber Output in DWDM Laser Module', fontsize=12)
         ax.set_ylabel('Frequency Error (GHz)', fontsize=12)
         ax.legend(fontsize=12, framealpha=0.9)
         ax.grid(True, alpha=0.3)
