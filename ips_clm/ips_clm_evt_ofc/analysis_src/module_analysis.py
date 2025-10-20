@@ -5944,6 +5944,7 @@ class temperature_aggressors_2:
     def analyze_30C_operation(self):
         """
         Analyze 30C operation data from '30 and 45 deg data.xlsx' file.
+        Analyzes only the last run_id and plots pic_mpd_value (in dBm) vs tile_id.
         """
         print("\n" + "="*80)
         print("ANALYZING 30C OPERATION DATA")
@@ -5956,10 +5957,6 @@ class temperature_aggressors_2:
             print(f"Error: Excel file not found at {excel_file}")
             return
         
-        # Create output directory
-        output_dir = self.base_path / 'analysis_results' / 'temperature_aggressors' / 'ofc' / 'operation_30C'
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
         # Read the 30C tab
         try:
             df_30c = pd.read_excel(excel_file, sheet_name='30C')
@@ -5968,45 +5965,51 @@ class temperature_aggressors_2:
             print(f"Error reading Excel file: {e}")
             return
         
-        # Use 'Unnamed: 0' as the actual tile_id (after Excel file change)
-        df_30c['actual_tile_id'] = df_30c['Unnamed: 0']
+        # Get the last run_id
+        last_run_id = df_30c['run_id'].max()
+        print(f"Last run_id: {last_run_id}")
         
-        # Get the last timestamp for each tile AND bank combination
-        last_timestamps = df_30c.groupby(['actual_tile_id', 'bank_type'])['timestamp'].max().reset_index()
+        # Filter to last run_id only
+        df_last = df_30c[df_30c['run_id'] == last_run_id]
+        print(f"Data shape for last run_id: {df_last.shape}")
+        print(f"Tiles: {sorted(df_last['tile_id'].unique())}")
+        print(f"Banks: {df_last['bank_type'].unique()}")
         
-        # Filter to only last timestamp for each tile-bank combination
-        df_filtered = df_30c.merge(last_timestamps, on=['actual_tile_id', 'bank_type', 'timestamp'], how='inner')
-        
-        print(f"Filtered to last timestamp: {df_filtered.shape}")
-        print(f"Tiles: {sorted(df_filtered['actual_tile_id'].unique())}")
-        print(f"Banks: {df_filtered['bank_type'].unique()}")
-        
-        # Parse pic_mpd_value arrays
+        # Parse pic_mpd_value arrays and convert to dBm
         data_to_plot = []
         
-        for idx, row in df_filtered.iterrows():
-            tile_id = row['actual_tile_id']
+        for idx, row in df_last.iterrows():
+            tile_id = row['tile_id']
             bank_type = row['bank_type']
             
             # Parse the pic_mpd_value string as a list
             try:
-                pic_values = ast.literal_eval(row['pic_mpd_value'])
+                pic_values_uw = ast.literal_eval(row['pic_mpd_value'])
                 
                 # Each value in the array represents a channel
-                for channel_idx, value in enumerate(pic_values):
+                for channel_idx, value_uw in enumerate(pic_values_uw):
+                    # Convert from µW to dBm: dBm = 10 * log10(power_uW / 1000)
+                    if value_uw > 0:
+                        value_dbm = 10 * np.log10(value_uw / 1000)
+                    else:
+                        value_dbm = np.nan
+                    
                     data_to_plot.append({
                         'tile_id': tile_id,
                         'bank_type': bank_type,
-                        'pic_mpd_value': value,
+                        'pic_mpd_value_dbm': value_dbm,
                         'channel': channel_idx
                     })
-            except:
+            except Exception as e:
                 continue
         
         df_plot = pd.DataFrame(data_to_plot)
         
+        # Remove NaN values
+        df_plot = df_plot.dropna(subset=['pic_mpd_value_dbm'])
+        
         print(f"Total data points to plot: {len(df_plot)}")
-        print(f"Tiles: {df_plot['tile_id'].nunique()}")
+        print(f"Tiles: {sorted(df_plot['tile_id'].unique())}")
         print(f"Points per bank: {df_plot.groupby('bank_type').size()}")
         
         # Create the plot
@@ -6024,24 +6027,32 @@ class temperature_aggressors_2:
             # Add jitter to tile_id for better visibility
             x_jitter = np.random.normal(0, 0.15, size=len(df_bank))
             x = df_bank['tile_id'].values + x_jitter
-            y = df_bank['pic_mpd_value'].values
+            y = df_bank['pic_mpd_value_dbm'].values
             
             ax.scatter(x, y, color=bank_colors[bank], alpha=0.6, s=30, 
                       label=bank_labels[bank], edgecolors='black', linewidth=0.3)
         
         # Labels and formatting
         ax.set_xlabel('Tile ID', fontsize=12)
-        ax.set_ylabel('PIC MPD Value (µW)', fontsize=12)
-        ax.set_title('Optical Power at 30°C', fontsize=14, fontweight='bold')
+        ax.set_ylabel('PIC MPD Value (dBm)', fontsize=12)
+        ax.set_title('Optical Power at 30°C (Last Run)', fontsize=14, fontweight='bold')
         ax.legend(fontsize=12, framealpha=0.9)
         ax.grid(True, alpha=0.3)
         ax.tick_params(labelsize=11)
         
         # Set x-axis to show all tile IDs
-        ax.set_xticks(range(0, 24))
-        ax.set_xlim(-0.5, 23.5)
+        unique_tiles = sorted(df_plot['tile_id'].unique())
+        ax.set_xticks(unique_tiles)
+        ax.set_xlim(min(unique_tiles) - 0.5, max(unique_tiles) + 0.5)
         
         plt.tight_layout()
+        
+        # Create output directory (delete old if exists)
+        output_dir = self.base_path / 'analysis_results' / 'temperature_aggressors' / 'ofc' / 'operation_30C'
+        if output_dir.exists():
+            import shutil
+            shutil.rmtree(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
         
         # Save the plot
         output_path = output_dir / 'optical_power_30C.png'
