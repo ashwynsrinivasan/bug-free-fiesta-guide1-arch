@@ -1971,8 +1971,8 @@ class tpanalysis:
         ax.set_xticklabels(x_labels, fontsize=10)
         
         # Labels (no title)
-        ax.set_xlabel('Channel', fontsize=11, fontweight='bold')
-        ax.set_ylabel('Frequency Error (GHz)', fontsize=11, fontweight='bold')
+        ax.set_xlabel('Channel', fontsize=9)
+        ax.set_ylabel('Frequency Error (GHz)', fontsize=9)
         ax.set_ylim(-100, 100)
         ax.grid(True, alpha=0.3, axis='y')
         
@@ -2045,8 +2045,8 @@ class tpanalysis:
         ax.set_xticklabels(x_labels, fontsize=10)
         
         # Labels (no title)
-        ax.set_xlabel('Channel', fontsize=11, fontweight='bold')
-        ax.set_ylabel('Power in fiber (mW)', fontsize=11, fontweight='bold')
+        ax.set_xlabel('Channel', fontsize=9)
+        ax.set_ylabel('Power in fiber (mW)', fontsize=9)
         ax.set_ylim(0, 20)
         ax.grid(True, alpha=0.3, axis='y')
         
@@ -2115,7 +2115,7 @@ class tpanalysis:
         ax.set_xlim(-0.5, 1.5)
         
         # Labels (no title, no x-axis label)
-        ax.set_ylabel('Total Power in fiber (mW)', fontsize=11, fontweight='bold')
+        ax.set_ylabel('Total Power in fiber (mW)', fontsize=9)
         ax.set_ylim(0, 200)
         ax.grid(True, alpha=0.3, axis='y')
         
