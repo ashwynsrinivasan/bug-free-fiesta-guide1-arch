@@ -6021,9 +6021,28 @@ class temperature_aggressors_2:
         print(f"Fiber numbers: {sorted(df_plot['fiber_num'].unique())}")
         print(f"Points per bank: {df_plot.groupby('bank_type').size()}")
         
+        # Calculate and print total power per fiber (sum across all 8 channels)
+        fiber_total_power = df_plot.groupby('fiber_num')['pic_mpd_value_mw'].sum().sort_index()
+        print(f"\n{'='*80}")
+        print("TOTAL POWER PER FIBER (sum of 8 channels):")
+        print(f"{'='*80}")
+        for fiber_num in range(1, 33):
+            if fiber_num in fiber_total_power.index:
+                total_power = fiber_total_power[fiber_num]
+                print(f"Fiber {fiber_num:2d}: {total_power:.3f} mW")
+            else:
+                print(f"Fiber {fiber_num:2d}: No data")
+        
+        # Print as a simple list
+        print(f"\n{'='*80}")
+        print("TOTAL POWER LIST (Fiber 1-32):")
+        print(f"{'='*80}")
+        power_list = [fiber_total_power.get(i, 0) for i in range(1, 33)]
+        print(power_list)
+        
         # Create the plot
         sns.set_style("whitegrid")
-        fig, ax = plt.subplots(figsize=(8, 4))
+        fig, ax = plt.subplots(figsize=(12, 4))
         
         # Define colors
         bank_colors = {'BANK_A': 'red', 'BANK_B': 'blue'}
@@ -6187,7 +6206,7 @@ class temperature_aggressors_2:
         
         # Create the plot
         sns.set_style("whitegrid")
-        fig, ax = plt.subplots(figsize=(8, 4))
+        fig, ax = plt.subplots(figsize=(12, 4))
         
         # Define colors
         bank_colors = {'BANK_A': 'red', 'BANK_B': 'blue'}
