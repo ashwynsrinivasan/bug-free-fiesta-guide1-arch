@@ -5988,9 +5988,9 @@ class temperature_aggressors_2:
                 
                 # Each value in the array represents a channel
                 for channel_idx, value_uw in enumerate(pic_values_uw):
-                    # Special case: multiply tile 5, bank B by 8
+                    # Special case: multiply tile 5, bank B by 7.5
                     if tile_id == 5 and bank_type == 'BANK_B':
-                        value_uw = value_uw * 8
+                        value_uw = value_uw * 7.5
                     
                     # Convert from µW to dBm: dBm = 10 * log10(power_uW / 1000)
                     if value_uw > 0:
