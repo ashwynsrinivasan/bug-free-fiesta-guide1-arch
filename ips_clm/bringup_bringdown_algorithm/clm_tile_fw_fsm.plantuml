@@ -1,0 +1,146 @@
+@startuml CLM tile state machine
+title CLM tile state machine
+hide empty description
+
+'
+'Legend
+'
+state Legend {
+state TransientState #peachpuff
+state SteadyState
+
+TransientState --> SteadyState: **Host-driven transition**
+SteadyState    --> TransientState: //Autonomous transition//
+}
+
+'--------------------------------------------------------------------------------
+'State Descriptions
+'--------------------------------------------------------------------------------
+
+state power_on     <<start>>
+state Reset        #peachpuff: Power-on state
+state MgmtInit     #peachpuff: Initialize software
+state MgmtInit     #peachpuff: Memory Map inaccessiblestate ModuleLowPwr           : Low Power Mode
+state ModuleLowPwr           : Memory Map accessible
+state ModulePwrUp  #peachpuff: Preparing for High Power mode
+state ModuleReady            : High Power Mode - TECs locked at setpoints
+state ModulePwrDn  #peachpuff: Returning to Low Power Mode
+state Resetting    #peachpuff: Preparing for reset
+state ModuleFault            : Waiting for host action
+
+'--------------------------------------------------------------------------------
+'State Entry and Exit Actions
+'--------------------------------------------------------------------------------
+Reset       : \n**entry/** Clear SoftwareReset signal
+MgmtInit    : \n**entry/** Initialize Memory Map
+ModuleLowPwr: \n**entry/** Write CMIS Register: ModuleState
+ModulePwrUp : \n**entry/** Capture signals from host for child FSM
+ModulePwrUp :   **entry/** Initialize child FSM
+ModuleReady : \n**entry/** Write CMIS Register: ModuleState
+ModuleReady :   **entry/** Capture signals from host for child FSMs
+ModuleReady :   **entry/** Initialize child FSM
+ModulePwrDn : \n**entry/** Write CMIS Register: ModuleState
+ModulePwrDn :   **entry/** Disable LD/VOA output
+ModulePwrDn :   **entry/** Disable PID controllers
+ModulePwrDn :   **entry/** Disable TECs
+Resetting   : \n**entry/** Disable LD/VOA/TEC output, disable TECs
+Resetting   :   **entry/** Trigger software reset
+Resetting   : \n**exit /** No exit, only reset
+ModuleFault : \n**entry/** Write CMIS Register: ModuleState
+ModuleFault :   **entry/** Write CMIS Register: ModuleFaultCause
+ModuleFault :   **entry/** Disable LD/VOA/TEC output, disable TECs
+ModuleFault : \n**exit /** Only exit path is ResetS or power down
+
+'--------------------------------------------------------------------------------
+'Transitions
+'--------------------------------------------------------------------------------
+
+power_on     --> Reset       : **PowerOnS**
+Reset        --> MgmtInit    : **!ResetS**
+
+MgmtInit     --> ModuleLowPwr: //Software initialized//
+
+ModuleLowPwr --> ModulePwrUp : **!LowPwrS**
+
+ModulePwrUp  --> ModuleReady : //temperature locked//
+ModulePwrUp  --> ModulePwrDn : **LowPwrS**
+
+ModuleReady  --> ModulePwrDn : **LowPwrExS**
+
+ModulePwrDn  --> ModuleLowPwr: //power-down complete//
+
+[*]          --> Resetting   : **ResetS**
+[*]          --> ModuleFault : //FaultS//
+
+'--------------------------------------------------------------------------------
+'Nested FSMs
+'--------------------------------------------------------------------------------
+state ModulePwrUp    #peachpuff {
+  state SelfTest     #peachpuff: Testing ADCs / DACs / TECs
+  state Calibrate    #peachpuff: Performing LI/T sweep to find setpoints
+  state TempLock     #peachpuff: Acquiring temperature lock
+  state selftestexit <<choice>>
+
+  SelfTest : \n**entry/** Start self-test routine
+  Calibrate: \n**entry/** Determine necessary calibration
+  TempLock : \n**entry/** Enable PID controllers
+
+  [*]          --> SelfTest    : **SelfTestS**
+  [*]          --> Calibrate   : **!SelfTestS && CalibrateS**
+  [*]          --> TempLock    : **!SelfTestS && !CalibrateS**
+  SelfTest     --> selftestexit: //test_complete//
+  selftestexit --> Calibrate   : **CalibrateS**
+  selftestexit --> TempLock    : **!CalibrateS**
+  Calibrate    --> TempLock    : //cal_complete//
+}
+
+state ModuleReady {
+  state AutoReduction: LD/VOA current below Mission levels
+  state Mission      : LD/VOA current targeting setpoints, Dither ON
+
+  AutoReduction: \n**entry/** Initialize child FSM
+  AutoReduction: \n**exit /** Restore LD/VOA current to LaserSafety levels
+  Mission      : \n**entry/** Start dither lock algorithm
+  Mission      : \n**exit /** Stop dither lock algorithm
+
+  [*]           --> AutoReduction: **AutoReductionS**
+  [*]           --> Mission      : **!AutoReductionS**
+  AutoReduction --> Mission      : **!AutoReductionS**
+  Mission       --> AutoReduction: **AutoReductionS**
+}
+
+state AutoReduction {
+  state LaserSafety: Idle with constant LD/VOA current
+  state Handshake  : Modulating LD current for handshake
+
+  Handshake: \n**entry/** Start handshake sequence
+  Handshake: \n**exit /** Restore initial DAC outputs
+
+  [*]         --> LaserSafety: **!HandshakeS**
+  [*]         --> Handshake  : **HandshakeS**
+  LaserSafety --> Handshake  : **HandshakeS**
+  Handshake   --> LaserSafety: **!HandshakeS**
+}
+
+'--------------------------------------------------------------------------------
+'Notes
+'--------------------------------------------------------------------------------
+note right  of Reset      : This will transition autonomously
+note right  of MgmtInit   : **TODO [LSW-229]**: Set default values for Memory Map
+note right  of ModulePwrDn: This will transition autonomously
+
+note bottom of Resetting
+  Note that the tile will be unable to autonomously ensure
+  "all module electronics transition to reset"
+  for at least some ResetS sources (VccReset, Reset),
+  but will make an attempt for others (SoftwareReset)
+end note
+
+note right  of ModulePwrUp
+**TODO [LSW-230]**: Design Calibration procedure
+**TODO [LSW-231]**: Define SelfTest procedure
+
+**TODO [LSW-233]**: Define TempLock requirements
+end note
+
+@enduml

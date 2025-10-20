@@ -5941,3 +5941,115 @@ class temperature_aggressors_2:
         print(f"  ✓ OFC plot saved: {plot_filename}")
         print(f"  Figure size: 24 x 16 inches (6x4 per subplot)\n")
     
+    def analyze_30C_operation(self):
+        """
+        Analyze 30C operation data from '30 and 45 deg data.xlsx' file.
+        """
+        print("\n" + "="*80)
+        print("ANALYZING 30C OPERATION DATA")
+        print("="*80)
+        
+        # Path to the Excel file
+        excel_file = self.base_path / 'temperature_aggressors' / '30 and 45 deg data.xlsx'
+        
+        if not excel_file.exists():
+            print(f"Error: Excel file not found at {excel_file}")
+            return
+        
+        # Create output directory
+        output_dir = self.base_path / 'analysis_results' / 'temperature_aggressors' / 'ofc' / 'operation_30C'
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Read the 30C tab
+        try:
+            df_30c = pd.read_excel(excel_file, sheet_name='30C')
+            print(f"Loaded 30C data: {df_30c.shape}")
+        except Exception as e:
+            print(f"Error reading Excel file: {e}")
+            return
+        
+        # Use 'Unnamed: 0' as the actual tile_id (after Excel file change)
+        df_30c['actual_tile_id'] = df_30c['Unnamed: 0']
+        
+        # Get the last timestamp for each tile AND bank combination
+        last_timestamps = df_30c.groupby(['actual_tile_id', 'bank_type'])['timestamp'].max().reset_index()
+        
+        # Filter to only last timestamp for each tile-bank combination
+        df_filtered = df_30c.merge(last_timestamps, on=['actual_tile_id', 'bank_type', 'timestamp'], how='inner')
+        
+        print(f"Filtered to last timestamp: {df_filtered.shape}")
+        print(f"Tiles: {sorted(df_filtered['actual_tile_id'].unique())}")
+        print(f"Banks: {df_filtered['bank_type'].unique()}")
+        
+        # Parse pic_mpd_value arrays
+        data_to_plot = []
+        
+        for idx, row in df_filtered.iterrows():
+            tile_id = row['actual_tile_id']
+            bank_type = row['bank_type']
+            
+            # Parse the pic_mpd_value string as a list
+            try:
+                pic_values = ast.literal_eval(row['pic_mpd_value'])
+                
+                # Each value in the array represents a channel
+                for channel_idx, value in enumerate(pic_values):
+                    data_to_plot.append({
+                        'tile_id': tile_id,
+                        'bank_type': bank_type,
+                        'pic_mpd_value': value,
+                        'channel': channel_idx
+                    })
+            except:
+                continue
+        
+        df_plot = pd.DataFrame(data_to_plot)
+        
+        print(f"Total data points to plot: {len(df_plot)}")
+        print(f"Tiles: {df_plot['tile_id'].nunique()}")
+        print(f"Points per bank: {df_plot.groupby('bank_type').size()}")
+        
+        # Create the plot
+        sns.set_style("whitegrid")
+        fig, ax = plt.subplots(figsize=(12, 6))
+        
+        # Define colors
+        bank_colors = {'BANK_A': 'red', 'BANK_B': 'blue'}
+        bank_labels = {'BANK_A': 'Set A', 'BANK_B': 'Set B'}
+        
+        # Plot for each bank
+        for bank in ['BANK_A', 'BANK_B']:
+            df_bank = df_plot[df_plot['bank_type'] == bank]
+            
+            # Add jitter to tile_id for better visibility
+            x_jitter = np.random.normal(0, 0.15, size=len(df_bank))
+            x = df_bank['tile_id'].values + x_jitter
+            y = df_bank['pic_mpd_value'].values
+            
+            ax.scatter(x, y, color=bank_colors[bank], alpha=0.6, s=30, 
+                      label=bank_labels[bank], edgecolors='black', linewidth=0.3)
+        
+        # Labels and formatting
+        ax.set_xlabel('Tile ID', fontsize=12)
+        ax.set_ylabel('PIC MPD Value (µW)', fontsize=12)
+        ax.set_title('Optical Power at 30°C', fontsize=14, fontweight='bold')
+        ax.legend(fontsize=12, framealpha=0.9)
+        ax.grid(True, alpha=0.3)
+        ax.tick_params(labelsize=11)
+        
+        # Set x-axis to show all tile IDs
+        ax.set_xticks(range(0, 24))
+        ax.set_xlim(-0.5, 23.5)
+        
+        plt.tight_layout()
+        
+        # Save the plot
+        output_path = output_dir / 'optical_power_30C.png'
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ Plot saved: optical_power_30C.png")
+        print(f"  Location: {output_dir}")
+        print("\n30C Operation Analysis Complete!")
+        print("="*80)
+    
