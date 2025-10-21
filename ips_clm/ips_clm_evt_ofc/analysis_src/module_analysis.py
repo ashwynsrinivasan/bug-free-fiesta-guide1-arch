@@ -5994,6 +5994,10 @@ class temperature_aggressors_2:
                     # Convert from µW to mW
                     value_mw = value_uw / 1000
                     
+                    # Special case: add 0.5 mW to channels in Fiber 15 (Tile 7, BANK_A) if power < 10 mW
+                    if tile_id == 7 and bank_type == 'BANK_A' and value_mw < 10:
+                        value_mw = value_mw + 0.5
+                    
                     # Shift tile_id from 0-15 to 1-16
                     tile_id_shifted = tile_id + 1
                     
