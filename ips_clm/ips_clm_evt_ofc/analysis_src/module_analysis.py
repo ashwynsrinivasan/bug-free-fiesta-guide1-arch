@@ -5976,6 +5976,29 @@ class temperature_aggressors_2:
         print(f"Tiles: {sorted(df_last['tile_id'].unique())}")
         print(f"Banks: {df_last['bank_type'].unique()}")
         
+        # Load CSV data for specific fibers (2, 3, 15) replacement
+        csv_file = self.base_path / 'temperature_aggressors' / 'optical_wavemeter_loop_20251010T213800367Z_e7390a1b-5b91-42b7-ad23-f00f82fc19a2.csv'
+        if csv_file.exists():
+            print("\nReplacing data for Fibers 2, 3, and 15 from CSV file...")
+            df_csv = pd.read_csv(csv_file)
+            last_cycle_csv = df_csv['cycle_number'].max()
+            df_csv_last = df_csv[df_csv['cycle_number'] == last_cycle_csv]
+            
+            # Replace data for Fiber 2 (Tile 0, BANK_B), Fiber 3 (Tile 1, BANK_A), Fiber 15 (Tile 7, BANK_A)
+            replace_tiles = [(0, 'BANK_B'), (1, 'BANK_A'), (7, 'BANK_A')]
+            for tile_id, bank_type in replace_tiles:
+                # Remove old data
+                df_last = df_last[~((df_last['tile_id'] == tile_id) & (df_last['bank_type'] == bank_type))]
+                # Add new data from CSV
+                new_row = df_csv_last[(df_csv_last['tile_id'] == tile_id) & (df_csv_last['bank_type'] == bank_type)]
+                if len(new_row) > 0:
+                    df_last = pd.concat([df_last, new_row], ignore_index=True)
+                    fiber_map = {(0, 'BANK_B'): 2, (1, 'BANK_A'): 3, (7, 'BANK_A'): 15}
+                    fiber_num = fiber_map[(tile_id, bank_type)]
+                    print(f"  ✓ Replaced Fiber {fiber_num} (Tile {tile_id}, {bank_type})")
+        else:
+            print(f"\nWarning: CSV file not found at {csv_file}")
+        
         # Parse pic_mpd_value arrays and convert to dBm
         data_to_plot = []
         
@@ -6128,6 +6151,23 @@ class temperature_aggressors_2:
         df_reference = df_30c[df_30c['cycle_number'] == first_cycle]
         print(f"Reference cycle_number: {first_cycle}")
         
+        # Load CSV data for reference wavelengths (fibers 2, 3, 15)
+        csv_file = self.base_path / 'temperature_aggressors' / 'optical_wavemeter_loop_20251010T213800367Z_e7390a1b-5b91-42b7-ad23-f00f82fc19a2.csv'
+        if csv_file.exists():
+            df_csv = pd.read_csv(csv_file)
+            first_cycle_csv = df_csv['cycle_number'].min()
+            df_csv_reference = df_csv[df_csv['cycle_number'] == first_cycle_csv]
+            
+            # Replace reference data for specific tiles
+            replace_tiles = [(0, 'BANK_B'), (1, 'BANK_A'), (7, 'BANK_A')]
+            for tile_id, bank_type in replace_tiles:
+                # Remove old reference data
+                df_reference = df_reference[~((df_reference['tile_id'] == tile_id) & (df_reference['bank_type'] == bank_type))]
+                # Add new reference data from CSV
+                new_row = df_csv_reference[(df_csv_reference['tile_id'] == tile_id) & (df_csv_reference['bank_type'] == bank_type)]
+                if len(new_row) > 0:
+                    df_reference = pd.concat([df_reference, new_row], ignore_index=True)
+        
         # Store reference wavelengths for each tile and bank
         ref_wavelengths = {}
         for idx, row in df_reference.iterrows():
@@ -6152,6 +6192,25 @@ class temperature_aggressors_2:
         print(f"Data shape for last cycle: {df_last.shape}")
         print(f"Tiles: {sorted(df_last['tile_id'].unique())}")
         print(f"Banks: {df_last['bank_type'].unique()}")
+        
+        # Replace data for Fibers 2, 3, and 15 from CSV file
+        if csv_file.exists():
+            print("\nReplacing data for Fibers 2, 3, and 15 from CSV file...")
+            last_cycle_csv = df_csv['cycle_number'].max()
+            df_csv_last = df_csv[df_csv['cycle_number'] == last_cycle_csv]
+            
+            # Replace data for Fiber 2 (Tile 0, BANK_B), Fiber 3 (Tile 1, BANK_A), Fiber 15 (Tile 7, BANK_A)
+            replace_tiles = [(0, 'BANK_B'), (1, 'BANK_A'), (7, 'BANK_A')]
+            for tile_id, bank_type in replace_tiles:
+                # Remove old data
+                df_last = df_last[~((df_last['tile_id'] == tile_id) & (df_last['bank_type'] == bank_type))]
+                # Add new data from CSV
+                new_row = df_csv_last[(df_csv_last['tile_id'] == tile_id) & (df_csv_last['bank_type'] == bank_type)]
+                if len(new_row) > 0:
+                    df_last = pd.concat([df_last, new_row], ignore_index=True)
+                    fiber_map = {(0, 'BANK_B'): 2, (1, 'BANK_A'): 3, (7, 'BANK_A'): 15}
+                    fiber_num = fiber_map[(tile_id, bank_type)]
+                    print(f"  ✓ Replaced Fiber {fiber_num} (Tile {tile_id}, {bank_type})")
         
         # Parse wavelength_nm and calculate frequency error
         data_to_plot = []
