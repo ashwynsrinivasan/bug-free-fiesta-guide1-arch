@@ -5943,15 +5943,15 @@ class temperature_aggressors_2:
     
     def analyze_30C_operation(self):
         """
-        Analyze 30C operation data from '30 and 45 deg data.xlsx' file.
-        Analyzes only the last run_id and plots pic_mpd_value (in dBm) vs tile_id.
+        Analyze 30C operation data from 'ofc_data.xlsx' file.
+        Analyzes only the last cycle_number and plots pic_mpd_value (in mW) vs fiber number.
         """
         print("\n" + "="*80)
         print("ANALYZING 30C OPERATION DATA")
         print("="*80)
         
         # Path to the Excel file
-        excel_file = self.base_path / 'temperature_aggressors' / '30 and 45 deg data.xlsx'
+        excel_file = self.base_path / 'temperature_aggressors' / 'ofc_data.xlsx'
         
         if not excel_file.exists():
             print(f"Error: Excel file not found at {excel_file}")
@@ -5965,13 +5965,13 @@ class temperature_aggressors_2:
             print(f"Error reading Excel file: {e}")
             return
         
-        # Get the last run_id
-        last_run_id = df_30c['run_id'].max()
-        print(f"Last run_id: {last_run_id}")
+        # Get the last cycle_number (equivalent to run_id in previous file)
+        last_cycle = df_30c['cycle_number'].max()
+        print(f"Last cycle_number: {last_cycle}")
         
-        # Filter to last run_id only
-        df_last = df_30c[df_30c['run_id'] == last_run_id]
-        print(f"Data shape for last run_id: {df_last.shape}")
+        # Filter to last cycle only
+        df_last = df_30c[df_30c['cycle_number'] == last_cycle]
+        print(f"Data shape for last cycle: {df_last.shape}")
         print(f"Tiles: {sorted(df_last['tile_id'].unique())}")
         print(f"Banks: {df_last['bank_type'].unique()}")
         
@@ -6048,6 +6048,11 @@ class temperature_aggressors_2:
         bank_colors = {'BANK_A': 'red', 'BANK_B': 'blue'}
         bank_labels = {'BANK_A': 'Set A', 'BANK_B': 'Set B'}
         
+        # Add spec range highlight (10-17 mW) - no label in legend
+        ax.axhline(y=10, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
+        ax.axhline(y=17, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
+        ax.axhspan(10, 17, color='green', alpha=0.1)
+        
         # Plot for each bank
         for bank in ['BANK_A', 'BANK_B']:
             df_bank = df_plot[df_plot['bank_type'] == bank]
@@ -6095,15 +6100,15 @@ class temperature_aggressors_2:
     
     def analyze_30C_freq_error(self):
         """
-        Analyze 30C operation frequency error data from '30 and 45 deg data.xlsx' file.
-        Analyzes only the last run_id and plots frequency error vs tile_id.
+        Analyze 30C operation frequency error data from 'ofc_data.xlsx' file.
+        Analyzes only the last cycle_number and plots frequency error vs fiber number.
         """
         print("\n" + "="*80)
         print("ANALYZING 30C FREQUENCY ERROR DATA")
         print("="*80)
         
         # Path to the Excel file
-        excel_file = self.base_path / 'temperature_aggressors' / '30 and 45 deg data.xlsx'
+        excel_file = self.base_path / 'temperature_aggressors' / 'ofc_data.xlsx'
         
         if not excel_file.exists():
             print(f"Error: Excel file not found at {excel_file}")
@@ -6117,10 +6122,10 @@ class temperature_aggressors_2:
             print(f"Error reading Excel file: {e}")
             return
         
-        # Get the first run_id for reference wavelengths
-        first_run_id = df_30c['run_id'].min()
-        df_reference = df_30c[df_30c['run_id'] == first_run_id]
-        print(f"Reference run_id: {first_run_id}")
+        # Get the first cycle_number for reference wavelengths
+        first_cycle = df_30c['cycle_number'].min()
+        df_reference = df_30c[df_30c['cycle_number'] == first_cycle]
+        print(f"Reference cycle_number: {first_cycle}")
         
         # Store reference wavelengths for each tile and bank
         ref_wavelengths = {}
@@ -6137,13 +6142,13 @@ class temperature_aggressors_2:
         
         print(f"Loaded reference wavelengths for {len(ref_wavelengths)} tile-bank combinations")
         
-        # Get the last run_id
-        last_run_id = df_30c['run_id'].max()
-        print(f"Last run_id: {last_run_id}")
+        # Get the last cycle_number
+        last_cycle = df_30c['cycle_number'].max()
+        print(f"Last cycle_number: {last_cycle}")
         
-        # Filter to last run_id only
-        df_last = df_30c[df_30c['run_id'] == last_run_id]
-        print(f"Data shape for last run_id: {df_last.shape}")
+        # Filter to last cycle only
+        df_last = df_30c[df_30c['cycle_number'] == last_cycle]
+        print(f"Data shape for last cycle: {df_last.shape}")
         print(f"Tiles: {sorted(df_last['tile_id'].unique())}")
         print(f"Banks: {df_last['bank_type'].unique()}")
         
