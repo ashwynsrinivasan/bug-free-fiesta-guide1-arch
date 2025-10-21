@@ -18,6 +18,7 @@ import ast
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
+import seaborn as sns
 import yaml
 from pathlib import Path
 import warnings
