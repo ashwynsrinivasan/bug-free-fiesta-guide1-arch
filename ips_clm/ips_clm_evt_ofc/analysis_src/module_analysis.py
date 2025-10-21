@@ -6116,6 +6116,13 @@ class temperature_aggressors_2:
         bank_colors = {'BANK_A': 'red', 'BANK_B': 'blue'}
         bank_labels = {'BANK_A': 'Set A', 'BANK_B': 'Set B'}
         
+        # Add spec range highlight (10-17 mW = 10-12.3 dBm) - no label in legend
+        spec_min_dbm = 10 * np.log10(10)  # 10 mW = 10 dBm
+        spec_max_dbm = 10 * np.log10(17)  # 17 mW = 12.3 dBm
+        ax.axhline(y=spec_min_dbm, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
+        ax.axhline(y=spec_max_dbm, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
+        ax.axhspan(spec_min_dbm, spec_max_dbm, color='green', alpha=0.1)
+        
         # Plot for each bank - convert to dBm
         for bank in ['BANK_A', 'BANK_B']:
             df_bank = df_plot[df_plot['bank_type'] == bank]
