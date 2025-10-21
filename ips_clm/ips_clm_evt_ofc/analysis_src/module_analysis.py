@@ -5626,8 +5626,8 @@ class temperature_aggressors_2:
         colors_a = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
         colors_b = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
         
-        # OFC figure size: 6x4 per subplot in 4x4 grid = 24x16 total
-        fig, axes = plt.subplots(4, 4, figsize=(24, 16))
+        # OFC figure size: 5x4 per subplot in 4x4 grid = 20x16 total
+        fig, axes = plt.subplots(4, 4, figsize=(20, 16))
         axes = axes.flatten()
         
         c_speed_light = 299792.458
@@ -5756,8 +5756,8 @@ class temperature_aggressors_2:
         colors_a = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
         colors_b = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
         
-        # OFC figure size: 6x4 per subplot in 4x4 grid = 24x16 total
-        fig, axes = plt.subplots(4, 4, figsize=(24, 16))
+        # OFC figure size: 5x4 per subplot in 4x4 grid = 20x16 total
+        fig, axes = plt.subplots(4, 4, figsize=(20, 16))
         axes = axes.flatten()
         
         for plot_idx, tile_id in enumerate(tile_ids):
@@ -5836,8 +5836,8 @@ class temperature_aggressors_2:
         colors_a = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
         colors_b = plt.cm.Oranges(np.linspace(0.4, 0.9, 8))
         
-        # OFC figure size: 6x4 per subplot in 4x4 grid = 24x16 total
-        fig, axes = plt.subplots(4, 4, figsize=(24, 16))
+        # OFC figure size: 5x4 per subplot in 4x4 grid = 20x16 total
+        fig, axes = plt.subplots(4, 4, figsize=(20, 16))
         axes = axes.flatten()
         
         c_speed_light = 299792.458
