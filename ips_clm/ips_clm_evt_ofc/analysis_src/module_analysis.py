@@ -5989,10 +5989,6 @@ class temperature_aggressors_2:
                 
                 # Each value in the array represents a channel
                 for channel_idx, value_uw in enumerate(pic_values_uw):
-                    # Special case: multiply tile 5, bank B by 6.95
-                    if tile_id == 5 and bank_type == 'BANK_B':
-                        value_uw = value_uw * 6.95
-                    
                     # Convert from µW to mW
                     value_mw = value_uw / 1000
                     
