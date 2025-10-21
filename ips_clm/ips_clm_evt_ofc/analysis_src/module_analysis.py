@@ -5707,24 +5707,23 @@ class temperature_aggressors_2:
             ax2.plot(temp_hours, temp_values, color='red', linewidth=2, alpha=0.6,
                     linestyle='--', label='Case Temp')
             
-            ax.set_xlabel('Time (hours)', fontsize=24)
-            ax.set_ylabel('Frequency Error (GHz)', fontsize=24, color='black')
-            ax2.set_ylabel('Temperature (°C)', fontsize=24, color='red')
+            ax.set_xlabel('Time (hours)', fontsize=18)
+            ax.set_ylabel('Frequency Error (GHz)', fontsize=18, color='black')
+            ax2.set_ylabel('Temperature (°C)', fontsize=18, color='red')
             ax.set_ylim(-100, 100)
             ax.set_xlim(46, 48)
             ax.set_xticks([46, 47, 48])  # X-axis ticks at 46, 47, 48 hours
-            ax2.tick_params(axis='y', labelcolor='red', labelsize=20)
+            ax2.tick_params(axis='y', labelcolor='red', labelsize=15)
             
             ax.axhline(y=20, color='red', linestyle=':', linewidth=1.5, alpha=0.3)
             ax.axhline(y=-20, color='red', linestyle=':', linewidth=1.5, alpha=0.3)
             ax.axhspan(-20, 20, color='green', alpha=0.05)
             
-            ax.set_title(f'Tile {tile_id}', fontsize=20, fontweight='bold')
-            ax.tick_params(labelsize=20)
+            ax.tick_params(labelsize=15)
             ax.grid(True, alpha=0.3)
             
             # Only show temperature legend
-            ax2.legend(loc='best', fontsize=20)
+            ax2.legend(loc='upper left', fontsize=15)
         
         # Hide unused subplots
         for plot_idx in range(len(tile_ids), 16):
@@ -5794,8 +5793,8 @@ class temperature_aggressors_2:
                                color=colors[ch_idx], linewidth=1.0, alpha=0.7,
                                marker='o', markersize=2)
             
-            ax.set_xlabel('Time (hours)', fontsize=24)
-            ax.set_ylabel('Power in fiber (dBm)', fontsize=24)
+            ax.set_xlabel('Time (hours)', fontsize=18)
+            ax.set_ylabel('Power in fiber (dBm)', fontsize=18)
             ax.set_ylim(9, 13)
             ax.set_xlim(0, 96)
             ax.set_xticks([0, 24, 48, 72, 96])  # X-axis ticks at 0, 24, 48, 72, 96 hours
@@ -5804,8 +5803,7 @@ class temperature_aggressors_2:
             ax.axhline(y=12.3, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
             ax.axhspan(10.0, 12.3, color='green', alpha=0.05)
             
-            ax.set_title(f'Tile {tile_id}', fontsize=20, fontweight='bold')
-            ax.tick_params(labelsize=20)
+            ax.tick_params(labelsize=15)
             ax.grid(True, alpha=0.3)
         
         # Hide unused subplots
@@ -5915,8 +5913,8 @@ class temperature_aggressors_2:
                                color=colors[ch_idx], linewidth=1.0, alpha=0.7,
                                marker='o', markersize=2)
             
-            ax.set_xlabel('Time (hours)', fontsize=24)
-            ax.set_ylabel('Frequency Error (GHz)', fontsize=24)
+            ax.set_xlabel('Time (hours)', fontsize=18)
+            ax.set_ylabel('Frequency Error (GHz)', fontsize=18)
             ax.set_ylim(-100, 100)
             ax.set_xlim(0, 96)
             ax.set_xticks([0, 24, 48, 72, 96])  # X-axis ticks at 0, 24, 48, 72, 96 hours
@@ -5925,8 +5923,7 @@ class temperature_aggressors_2:
             ax.axhline(y=-20, color='red', linestyle=':', linewidth=1.5, alpha=0.5)
             ax.axhspan(-20, 20, color='green', alpha=0.05)
             
-            ax.set_title(f'Tile {tile_id}', fontsize=20, fontweight='bold')
-            ax.tick_params(labelsize=20)
+            ax.tick_params(labelsize=15)
             ax.grid(True, alpha=0.3)
         
         # Hide unused subplots
