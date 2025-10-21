@@ -5707,23 +5707,24 @@ class temperature_aggressors_2:
             ax2.plot(temp_hours, temp_values, color='red', linewidth=2, alpha=0.6,
                     linestyle='--', label='Case Temp')
             
-            ax.set_xlabel('Time (hours)', fontsize=12)
-            ax.set_ylabel('Frequency Error (GHz)', fontsize=12, color='black')
-            ax2.set_ylabel('Temperature (°C)', fontsize=12, color='red')
+            ax.set_xlabel('Time (hours)', fontsize=24)
+            ax.set_ylabel('Frequency Error (GHz)', fontsize=24, color='black')
+            ax2.set_ylabel('Temperature (°C)', fontsize=24, color='red')
             ax.set_ylim(-100, 100)
             ax.set_xlim(46, 48)
-            ax2.tick_params(axis='y', labelcolor='red')
+            ax.set_xticks([46, 47, 48])  # X-axis ticks at 46, 47, 48 hours
+            ax2.tick_params(axis='y', labelcolor='red', labelsize=20)
             
             ax.axhline(y=20, color='red', linestyle=':', linewidth=1.5, alpha=0.3)
             ax.axhline(y=-20, color='red', linestyle=':', linewidth=1.5, alpha=0.3)
             ax.axhspan(-20, 20, color='green', alpha=0.05)
             
-            ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
-            ax.tick_params(labelsize=10)
+            ax.set_title(f'Tile {tile_id}', fontsize=20, fontweight='bold')
+            ax.tick_params(labelsize=20)
             ax.grid(True, alpha=0.3)
             
             # Only show temperature legend
-            ax2.legend(loc='best', fontsize=10)
+            ax2.legend(loc='best', fontsize=20)
         
         # Hide unused subplots
         for plot_idx in range(len(tile_ids), 16):
@@ -5793,18 +5794,18 @@ class temperature_aggressors_2:
                                color=colors[ch_idx], linewidth=1.0, alpha=0.7,
                                marker='o', markersize=2)
             
-            ax.set_xlabel('Time (hours)', fontsize=12)
-            ax.set_ylabel('Power in fiber (dBm)', fontsize=12)
+            ax.set_xlabel('Time (hours)', fontsize=24)
+            ax.set_ylabel('Power in fiber (dBm)', fontsize=24)
             ax.set_ylim(9, 13)
             ax.set_xlim(0, 96)
-            ax.set_xticks(np.arange(0, 97, 12))
+            ax.set_xticks([0, 24, 48, 72, 96])  # X-axis ticks at 0, 24, 48, 72, 96 hours
             
             ax.axhline(y=10.0, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
             ax.axhline(y=12.3, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
             ax.axhspan(10.0, 12.3, color='green', alpha=0.05)
             
-            ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
-            ax.tick_params(labelsize=10)
+            ax.set_title(f'Tile {tile_id}', fontsize=20, fontweight='bold')
+            ax.tick_params(labelsize=20)
             ax.grid(True, alpha=0.3)
         
         # Hide unused subplots
@@ -5914,18 +5915,18 @@ class temperature_aggressors_2:
                                color=colors[ch_idx], linewidth=1.0, alpha=0.7,
                                marker='o', markersize=2)
             
-            ax.set_xlabel('Time (hours)', fontsize=12)
-            ax.set_ylabel('Frequency Error (GHz)', fontsize=12)
+            ax.set_xlabel('Time (hours)', fontsize=24)
+            ax.set_ylabel('Frequency Error (GHz)', fontsize=24)
             ax.set_ylim(-100, 100)
             ax.set_xlim(0, 96)
-            ax.set_xticks(np.arange(0, 97, 12))
+            ax.set_xticks([0, 24, 48, 72, 96])  # X-axis ticks at 0, 24, 48, 72, 96 hours
             
             ax.axhline(y=20, color='red', linestyle=':', linewidth=1.5, alpha=0.5)
             ax.axhline(y=-20, color='red', linestyle=':', linewidth=1.5, alpha=0.5)
             ax.axhspan(-20, 20, color='green', alpha=0.05)
             
-            ax.set_title(f'Tile {tile_id}', fontsize=10, fontweight='bold')
-            ax.tick_params(labelsize=10)
+            ax.set_title(f'Tile {tile_id}', fontsize=20, fontweight='bold')
+            ax.tick_params(labelsize=20)
             ax.grid(True, alpha=0.3)
         
         # Hide unused subplots
@@ -5976,30 +5977,7 @@ class temperature_aggressors_2:
         print(f"Tiles: {sorted(df_last['tile_id'].unique())}")
         print(f"Banks: {df_last['bank_type'].unique()}")
         
-        # Load CSV data for specific fibers (2, 3, 15) replacement
-        csv_file = self.base_path / 'temperature_aggressors' / 'optical_wavemeter_loop_20251010T213800367Z_e7390a1b-5b91-42b7-ad23-f00f82fc19a2.csv'
-        if csv_file.exists():
-            print("\nReplacing data for Fibers 2, 3, and 15 from CSV file...")
-            df_csv = pd.read_csv(csv_file)
-            last_cycle_csv = df_csv['cycle_number'].max()
-            df_csv_last = df_csv[df_csv['cycle_number'] == last_cycle_csv]
-            
-            # Replace data for Fiber 2 (Tile 0, BANK_B), Fiber 3 (Tile 1, BANK_A), Fiber 15 (Tile 7, BANK_A)
-            replace_tiles = [(0, 'BANK_B'), (1, 'BANK_A'), (7, 'BANK_A')]
-            for tile_id, bank_type in replace_tiles:
-                # Remove old data
-                df_last = df_last[~((df_last['tile_id'] == tile_id) & (df_last['bank_type'] == bank_type))]
-                # Add new data from CSV
-                new_row = df_csv_last[(df_csv_last['tile_id'] == tile_id) & (df_csv_last['bank_type'] == bank_type)]
-                if len(new_row) > 0:
-                    df_last = pd.concat([df_last, new_row], ignore_index=True)
-                    fiber_map = {(0, 'BANK_B'): 2, (1, 'BANK_A'): 3, (7, 'BANK_A'): 15}
-                    fiber_num = fiber_map[(tile_id, bank_type)]
-                    print(f"  ✓ Replaced Fiber {fiber_num} (Tile {tile_id}, {bank_type})")
-        else:
-            print(f"\nWarning: CSV file not found at {csv_file}")
-        
-        # Parse pic_mpd_value arrays and convert to dBm
+        # Parse pic_mpd_value arrays and convert to mW
         data_to_plot = []
         
         for idx, row in df_last.iterrows():
@@ -6119,8 +6097,61 @@ class temperature_aggressors_2:
         
         print(f"  ✓ Plot saved: optical_power_30C.png")
         print(f"  Location: {output_dir}")
+        
+        # Create dBm plot
+        self._plot_30C_power_dBm(df_plot, output_dir)
+        
         print("\n30C Operation Analysis Complete!")
         print("="*80)
+    
+    def _plot_30C_power_dBm(self, df_plot, output_dir):
+        """
+        Create optical power plot in dBm (0-15 dBm).
+        """
+        # Create the plot
+        sns.set_style("whitegrid")
+        fig, ax = plt.subplots(figsize=(8, 4))
+        
+        # Define colors
+        bank_colors = {'BANK_A': 'red', 'BANK_B': 'blue'}
+        bank_labels = {'BANK_A': 'Set A', 'BANK_B': 'Set B'}
+        
+        # Plot for each bank - convert to dBm
+        for bank in ['BANK_A', 'BANK_B']:
+            df_bank = df_plot[df_plot['bank_type'] == bank]
+            
+            # Add jitter to fiber_num for better visibility
+            x_jitter = np.random.normal(0, 0.15, size=len(df_bank))
+            x = df_bank['fiber_num'].values + x_jitter
+            
+            # Convert mW to dBm: dBm = 10 * log10(mW)
+            y_dbm = 10 * np.log10(df_bank['pic_mpd_value_mw'].values)
+            
+            ax.scatter(x, y_dbm, color=bank_colors[bank], alpha=0.6, s=30, 
+                      label=bank_labels[bank], edgecolors='black', linewidth=0.3)
+        
+        # Labels and formatting (no title)
+        ax.set_xlabel('Fiber Output in DWDM Laser Module', fontsize=12)
+        ax.set_ylabel('Optical Power in Fiber (dBm)', fontsize=12)
+        ax.legend(fontsize=12, framealpha=0.9)
+        ax.grid(True, alpha=0.3)
+        ax.tick_params(labelsize=11)
+        
+        # Set x-axis to show fiber numbers 1-32
+        ax.set_xticks(range(1, 33))
+        ax.set_xlim(0.5, 32.5)
+        
+        # Set y-axis from 0 to 15 dBm
+        ax.set_ylim(0, 15)
+        
+        plt.tight_layout()
+        
+        # Save the plot
+        output_path = output_dir / 'optical_power_dBm_30C.png'
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        print(f"  ✓ Plot saved: optical_power_dBm_30C.png")
     
     def analyze_30C_freq_error(self):
         """
@@ -6151,23 +6182,6 @@ class temperature_aggressors_2:
         df_reference = df_30c[df_30c['cycle_number'] == first_cycle]
         print(f"Reference cycle_number: {first_cycle}")
         
-        # Load CSV data for reference wavelengths (fibers 2, 3, 15)
-        csv_file = self.base_path / 'temperature_aggressors' / 'optical_wavemeter_loop_20251010T213800367Z_e7390a1b-5b91-42b7-ad23-f00f82fc19a2.csv'
-        if csv_file.exists():
-            df_csv = pd.read_csv(csv_file)
-            first_cycle_csv = df_csv['cycle_number'].min()
-            df_csv_reference = df_csv[df_csv['cycle_number'] == first_cycle_csv]
-            
-            # Replace reference data for specific tiles
-            replace_tiles = [(0, 'BANK_B'), (1, 'BANK_A'), (7, 'BANK_A')]
-            for tile_id, bank_type in replace_tiles:
-                # Remove old reference data
-                df_reference = df_reference[~((df_reference['tile_id'] == tile_id) & (df_reference['bank_type'] == bank_type))]
-                # Add new reference data from CSV
-                new_row = df_csv_reference[(df_csv_reference['tile_id'] == tile_id) & (df_csv_reference['bank_type'] == bank_type)]
-                if len(new_row) > 0:
-                    df_reference = pd.concat([df_reference, new_row], ignore_index=True)
-        
         # Store reference wavelengths for each tile and bank
         ref_wavelengths = {}
         for idx, row in df_reference.iterrows():
@@ -6192,25 +6206,6 @@ class temperature_aggressors_2:
         print(f"Data shape for last cycle: {df_last.shape}")
         print(f"Tiles: {sorted(df_last['tile_id'].unique())}")
         print(f"Banks: {df_last['bank_type'].unique()}")
-        
-        # Replace data for Fibers 2, 3, and 15 from CSV file
-        if csv_file.exists():
-            print("\nReplacing data for Fibers 2, 3, and 15 from CSV file...")
-            last_cycle_csv = df_csv['cycle_number'].max()
-            df_csv_last = df_csv[df_csv['cycle_number'] == last_cycle_csv]
-            
-            # Replace data for Fiber 2 (Tile 0, BANK_B), Fiber 3 (Tile 1, BANK_A), Fiber 15 (Tile 7, BANK_A)
-            replace_tiles = [(0, 'BANK_B'), (1, 'BANK_A'), (7, 'BANK_A')]
-            for tile_id, bank_type in replace_tiles:
-                # Remove old data
-                df_last = df_last[~((df_last['tile_id'] == tile_id) & (df_last['bank_type'] == bank_type))]
-                # Add new data from CSV
-                new_row = df_csv_last[(df_csv_last['tile_id'] == tile_id) & (df_csv_last['bank_type'] == bank_type)]
-                if len(new_row) > 0:
-                    df_last = pd.concat([df_last, new_row], ignore_index=True)
-                    fiber_map = {(0, 'BANK_B'): 2, (1, 'BANK_A'): 3, (7, 'BANK_A'): 15}
-                    fiber_num = fiber_map[(tile_id, bank_type)]
-                    print(f"  ✓ Replaced Fiber {fiber_num} (Tile {tile_id}, {bank_type})")
         
         # Parse wavelength_nm and calculate frequency error
         data_to_plot = []
