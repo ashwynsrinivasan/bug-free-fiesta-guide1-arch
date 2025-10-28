@@ -6787,30 +6787,45 @@ class regulators_aggressors:
         Compare CLM0/CLM1 iout_read with summed laser_dac_value.
         - CLM0 iout compared with sum of laser_dac_value from tiles 0-7
         - CLM1 iout compared with sum of laser_dac_value from tiles 8-15
+        
+        Data is collected sequentially (one tile-bank per timestamp),
+        so we aggregate over measurement cycles (32 measurements = 16 tiles × 2 banks).
         """
         print(f"\nGenerating iout comparison plot: {output_path.name}")
         
         # Parse laser_dac_value column
         df['laser_dac_value_list'] = df['laser_dac_value'].apply(self._parse_list_column)
         
-        # Calculate sum of laser_dac_value for each tile at each timestamp
+        # Calculate sum of 8 laser channels for each tile-bank
         df['laser_sum_mA'] = df['laser_dac_value_list'].apply(lambda x: sum(x) if len(x) > 0 else 0)
         
-        # Group by timestamp and tile to sum across both banks
-        df_tile_sum = df.groupby(['timestamp', 'hours', 'tile_id']).agg({
-            'laser_sum_mA': 'sum'
+        # Create measurement cycle index
+        # Each cycle has 32 measurements (16 tiles × 2 banks)
+        df['row_idx'] = range(len(df))
+        df['cycle_idx'] = df['row_idx'] // 32
+        
+        # For each cycle, sum laser current per tile (both banks)
+        df_tile_cycle = df.groupby(['cycle_idx', 'tile_id']).agg({
+            'laser_sum_mA': 'sum',  # Sum both banks for each tile
+            'hours': 'mean'  # Average time for the cycle
         }).reset_index()
         
         # Separate tiles 0-7 and 8-15
-        df_tiles_0_7 = df_tile_sum[df_tile_sum['tile_id'].between(0, 7)]
-        df_tiles_8_15 = df_tile_sum[df_tile_sum['tile_id'].between(8, 15)]
+        df_tiles_0_7 = df_tile_cycle[df_tile_cycle['tile_id'].between(0, 7)]
+        df_tiles_8_15 = df_tile_cycle[df_tile_cycle['tile_id'].between(8, 15)]
         
-        # Sum laser values for each group at each timestamp
-        laser_sum_0_7 = df_tiles_0_7.groupby(['timestamp', 'hours'])['laser_sum_mA'].sum().reset_index()
-        laser_sum_8_15 = df_tiles_8_15.groupby(['timestamp', 'hours'])['laser_sum_mA'].sum().reset_index()
+        # Sum across all tiles in each group per cycle
+        laser_sum_0_7 = df_tiles_0_7.groupby('cycle_idx').agg({
+            'laser_sum_mA': 'sum',
+            'hours': 'mean'
+        }).reset_index()
+        
+        laser_sum_8_15 = df_tiles_8_15.groupby('cycle_idx').agg({
+            'laser_sum_mA': 'sum',
+            'hours': 'mean'
+        }).reset_index()
         
         # Extract CLM0 and CLM1 iout_read values
-        # CLM0 is at index 0, CLM1 is at index 1 in dac_order
         clm0_data = []
         clm1_data = []
         
@@ -6822,25 +6837,30 @@ class regulators_aggressors:
                 for i, dac_order in enumerate(dac_orders):
                     if dac_order == 'CLM0':
                         clm0_data.append({
-                            'timestamp': row['timestamp'],
+                            'cycle_idx': row['cycle_idx'],
                             'hours': row['hours'],
-                            'iout_A': iout_values[i],
                             'iout_mA': iout_values[i] * 1000  # Convert A to mA
                         })
                     elif dac_order == 'CLM1':
                         clm1_data.append({
-                            'timestamp': row['timestamp'],
+                            'cycle_idx': row['cycle_idx'],
                             'hours': row['hours'],
-                            'iout_A': iout_values[i],
                             'iout_mA': iout_values[i] * 1000  # Convert A to mA
                         })
         
         df_clm0 = pd.DataFrame(clm0_data)
         df_clm1 = pd.DataFrame(clm1_data)
         
-        # Average CLM0 and CLM1 across all tiles at each timestamp
-        df_clm0_avg = df_clm0.groupby(['timestamp', 'hours'])['iout_mA'].mean().reset_index()
-        df_clm1_avg = df_clm1.groupby(['timestamp', 'hours'])['iout_mA'].mean().reset_index()
+        # Average CLM0 and CLM1 across all measurements in each cycle
+        df_clm0_avg = df_clm0.groupby('cycle_idx').agg({
+            'iout_mA': 'mean',
+            'hours': 'mean'
+        }).reset_index()
+        
+        df_clm1_avg = df_clm1.groupby('cycle_idx').agg({
+            'iout_mA': 'mean',
+            'hours': 'mean'
+        }).reset_index()
         
         # Create figure with 2 subplots
         fig, axes = plt.subplots(1, 2, figsize=(16, 6))
