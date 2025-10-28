@@ -6668,6 +6668,9 @@ class regulators_aggressors:
         self._plot_regulators(df_reg,
                              self.results_path / 'missionmode_regulators_regevt_kenya.png',
                              'RegEvt Kenya')
+        self._plot_iout_compare(df,
+                               self.results_path / 'missionmode_iout_compare_regevt_kenya.png',
+                               'RegEvt Kenya')
         
         print(f"\nKenya analysis complete!")
     
@@ -6701,6 +6704,9 @@ class regulators_aggressors:
         self._plot_regulators(df_reg,
                              self.results_path / 'missionmode_regulators_regevt_endeavour.png',
                              'RegEvt Endeavour')
+        self._plot_iout_compare(df,
+                               self.results_path / 'missionmode_iout_compare_regevt_endeavour.png',
+                               'RegEvt Endeavour')
         
         print(f"\nEndevour analysis complete!")
     
@@ -6734,6 +6740,9 @@ class regulators_aggressors:
         self._plot_regulators(df_reg,
                              self.results_path / 'missionmode_regulators_poweropt_kenya.png',
                              'PowerOpt Kenya')
+        self._plot_iout_compare(df,
+                               self.results_path / 'missionmode_iout_compare_poweropt_kenya.png',
+                               'PowerOpt Kenya')
         
         print(f"\nKenya analysis complete!")
     
@@ -6767,6 +6776,105 @@ class regulators_aggressors:
         self._plot_regulators(df_reg,
                              self.results_path / 'missionmode_regulators_poweropt_endeavour.png',
                              'PowerOpt Endeavour')
+        self._plot_iout_compare(df,
+                               self.results_path / 'missionmode_iout_compare_poweropt_endeavour.png',
+                               'PowerOpt Endeavour')
         
         print(f"\nEndeavour analysis complete!")
+    
+    def _plot_iout_compare(self, df, output_path, title_suffix):
+        """
+        Compare CLM0/CLM1 iout_read with summed laser_dac_value.
+        - CLM0 iout compared with sum of laser_dac_value from tiles 0-7
+        - CLM1 iout compared with sum of laser_dac_value from tiles 8-15
+        """
+        print(f"\nGenerating iout comparison plot: {output_path.name}")
+        
+        # Parse laser_dac_value column
+        df['laser_dac_value_list'] = df['laser_dac_value'].apply(self._parse_list_column)
+        
+        # Calculate sum of laser_dac_value for each tile at each timestamp
+        df['laser_sum_mA'] = df['laser_dac_value_list'].apply(lambda x: sum(x) if len(x) > 0 else 0)
+        
+        # Group by timestamp and tile to sum across both banks
+        df_tile_sum = df.groupby(['timestamp', 'hours', 'tile_id']).agg({
+            'laser_sum_mA': 'sum'
+        }).reset_index()
+        
+        # Separate tiles 0-7 and 8-15
+        df_tiles_0_7 = df_tile_sum[df_tile_sum['tile_id'].between(0, 7)]
+        df_tiles_8_15 = df_tile_sum[df_tile_sum['tile_id'].between(8, 15)]
+        
+        # Sum laser values for each group at each timestamp
+        laser_sum_0_7 = df_tiles_0_7.groupby(['timestamp', 'hours'])['laser_sum_mA'].sum().reset_index()
+        laser_sum_8_15 = df_tiles_8_15.groupby(['timestamp', 'hours'])['laser_sum_mA'].sum().reset_index()
+        
+        # Extract CLM0 and CLM1 iout_read values
+        # CLM0 is at index 0, CLM1 is at index 1 in dac_order
+        clm0_data = []
+        clm1_data = []
+        
+        for idx, row in df.iterrows():
+            dac_orders = row['dac_order_list']
+            iout_values = row['iout_read_list']
+            
+            if len(dac_orders) == len(iout_values):
+                for i, dac_order in enumerate(dac_orders):
+                    if dac_order == 'CLM0':
+                        clm0_data.append({
+                            'timestamp': row['timestamp'],
+                            'hours': row['hours'],
+                            'iout_A': iout_values[i],
+                            'iout_mA': iout_values[i] * 1000  # Convert A to mA
+                        })
+                    elif dac_order == 'CLM1':
+                        clm1_data.append({
+                            'timestamp': row['timestamp'],
+                            'hours': row['hours'],
+                            'iout_A': iout_values[i],
+                            'iout_mA': iout_values[i] * 1000  # Convert A to mA
+                        })
+        
+        df_clm0 = pd.DataFrame(clm0_data)
+        df_clm1 = pd.DataFrame(clm1_data)
+        
+        # Average CLM0 and CLM1 across all tiles at each timestamp
+        df_clm0_avg = df_clm0.groupby(['timestamp', 'hours'])['iout_mA'].mean().reset_index()
+        df_clm1_avg = df_clm1.groupby(['timestamp', 'hours'])['iout_mA'].mean().reset_index()
+        
+        # Create figure with 2 subplots
+        fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+        
+        # Plot 1: CLM0 vs Tiles 0-7
+        ax = axes[0]
+        if len(df_clm0_avg) > 0 and len(laser_sum_0_7) > 0:
+            ax.plot(df_clm0_avg['hours'], df_clm0_avg['iout_mA'], 
+                   label='CLM0 iout_read', color='blue', linewidth=2, alpha=0.8)
+            ax.plot(laser_sum_0_7['hours'], laser_sum_0_7['laser_sum_mA'], 
+                   label='Sum of laser_dac (Tiles 0-7)', color='red', linewidth=2, alpha=0.8)
+        ax.set_xlabel('Time (hours)', fontsize=14)
+        ax.set_ylabel('Current (mA)', fontsize=14)
+        ax.set_title('CLM0 Regulator vs Tiles 0-7 Laser Current', fontsize=16)
+        ax.legend(fontsize=12, loc='best')
+        ax.grid(True, alpha=0.3)
+        ax.tick_params(labelsize=12)
+        
+        # Plot 2: CLM1 vs Tiles 8-15
+        ax = axes[1]
+        if len(df_clm1_avg) > 0 and len(laser_sum_8_15) > 0:
+            ax.plot(df_clm1_avg['hours'], df_clm1_avg['iout_mA'], 
+                   label='CLM1 iout_read', color='blue', linewidth=2, alpha=0.8)
+            ax.plot(laser_sum_8_15['hours'], laser_sum_8_15['laser_sum_mA'], 
+                   label='Sum of laser_dac (Tiles 8-15)', color='red', linewidth=2, alpha=0.8)
+        ax.set_xlabel('Time (hours)', fontsize=14)
+        ax.set_ylabel('Current (mA)', fontsize=14)
+        ax.set_title('CLM1 Regulator vs Tiles 8-15 Laser Current', fontsize=16)
+        ax.legend(fontsize=12, loc='best')
+        ax.grid(True, alpha=0.3)
+        ax.tick_params(labelsize=12)
+        
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"  ✓ Saved: {output_path.name}")
     
