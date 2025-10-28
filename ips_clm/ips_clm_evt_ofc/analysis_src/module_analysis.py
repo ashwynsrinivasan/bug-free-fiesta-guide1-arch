@@ -6326,4 +6326,443 @@ class temperature_aggressors_2:
         print(f"  Location: {output_dir}")
         print("\n30C Frequency Error Analysis Complete!")
         print("="*80)
+
+
+class regulators_aggressors:
+    """
+    Analysis class for regulators aggressors testing.
+    
+    This class analyzes regulator performance data from:
+    - ips.clm.evt.xlsx (Kenya and Endevour tabs)
+    - ips.clm.power.optimization.xlsx (Kenya and Endeavour tabs)
+    """
+    
+    def __init__(self, base_path):
+        """Initialize regulators aggressors analysis with base path."""
+        self.base_path = Path(base_path)
+        self.data_path = self.base_path / "regulators_aggressors"
+        self.results_path = self.base_path / "analysis_results" / "regulators_aggressors"
+        self.results_path.mkdir(parents=True, exist_ok=True)
+        
+        print("="*80)
+        print("Regulators Aggressors Analysis")
+        print("="*80)
+        print(f"Data path: {self.data_path}")
+        print(f"Results path: {self.results_path}\n")
+    
+    def analyze_all(self):
+        """Run all analysis methods."""
+        print("Running all regulators aggressors analysis...\n")
+        
+        # Analyze ips.clm.evt.xlsx
+        self.analyze_evt_kenya()
+        self.analyze_evt_endeavour()
+        
+        # Analyze ips.clm.power.optimization.xlsx
+        self.analyze_poweropt_kenya()
+        self.analyze_poweropt_endeavour()
+        
+        print("\n" + "="*80)
+        print("All regulators aggressors analysis complete!")
+        print("="*80)
+    
+    def _parse_list_column(self, value):
+        """Parse string representation of list into actual list."""
+        try:
+            return ast.literal_eval(value)
+        except:
+            return []
+    
+    def _prepare_data(self, df, sheet_name):
+        """Prepare dataframe with parsed lists and time in hours."""
+        # Convert timestamp to datetime and calculate hours
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        start_time = df['timestamp'].min()
+        df['hours'] = (df['timestamp'] - start_time).dt.total_seconds() / 3600
+        
+        # Parse list columns
+        df['vout_read_list'] = df['vout_read'].apply(self._parse_list_column)
+        df['iout_read_list'] = df['iout_read'].apply(self._parse_list_column)
+        df['dac_order_list'] = df['dac_order'].apply(self._parse_list_column)
+        df['pic_mpd_value_list'] = df['pic_mpd_value'].apply(self._parse_list_column)
+        df['wavelength_nm_list'] = df['wavelength_nm'].apply(self._parse_list_column)
+        
+        return df
+    
+    def _expand_regulator_data(self, df):
+        """Expand regulator data from lists to individual rows."""
+        expanded_data = []
+        
+        for idx, row in df.iterrows():
+            dac_orders = row['dac_order_list']
+            vout_values = row['vout_read_list']
+            iout_values = row['iout_read_list']
+            
+            if len(dac_orders) == len(vout_values) == len(iout_values):
+                for i, dac_order in enumerate(dac_orders):
+                    expanded_data.append({
+                        'tile_id': row['tile_id'],
+                        'bank_type': row['bank_type'],
+                        'timestamp': row['timestamp'],
+                        'hours': row['hours'],
+                        'dac_order': dac_order,
+                        'vout_read': vout_values[i],
+                        'iout_read': iout_values[i],
+                        'regulator_power': vout_values[i] * iout_values[i] / 1000  # Power in Watts (V * mA / 1000)
+                    })
+        
+        return pd.DataFrame(expanded_data)
+    
+    def _expand_optical_data(self, df):
+        """Expand optical data from lists to individual rows."""
+        expanded_data = []
+        
+        for idx, row in df.iterrows():
+            pic_values = row['pic_mpd_value_list']
+            wavelength_values = row['wavelength_nm_list']
+            
+            if len(pic_values) == len(wavelength_values):
+                for channel_idx in range(len(pic_values)):
+                    expanded_data.append({
+                        'tile_id': row['tile_id'],
+                        'bank_type': row['bank_type'],
+                        'timestamp': row['timestamp'],
+                        'hours': row['hours'],
+                        'channel': channel_idx,
+                        'pic_mpd_value_uw': pic_values[channel_idx],
+                        'wavelength_nm': wavelength_values[channel_idx]
+                    })
+        
+        return pd.DataFrame(expanded_data)
+    
+    def _plot_missionmode_freqerror(self, df_expanded, output_path, title_suffix):
+        """Plot frequency error for all tiles in mission mode."""
+        print(f"\nGenerating mission mode frequency error plot: {output_path.name}")
+        
+        # Calculate frequency error
+        c = 299792458  # Speed of light in m/s
+        
+        # Get reference wavelengths (first timestamp for each tile-bank-channel)
+        df_ref = df_expanded.sort_values('timestamp').groupby(['tile_id', 'bank_type', 'channel']).first().reset_index()
+        df_ref['ref_freq_THz'] = c / (df_ref['wavelength_nm'] * 1e-9) / 1e12
+        
+        # Merge reference frequencies
+        df_merged = df_expanded.merge(
+            df_ref[['tile_id', 'bank_type', 'channel', 'ref_freq_THz']],
+            on=['tile_id', 'bank_type', 'channel'],
+            how='left'
+        )
+        
+        # Calculate measured frequency and error
+        df_merged['measured_freq_THz'] = c / (df_merged['wavelength_nm'] * 1e-9) / 1e12
+        df_merged['freq_error_GHz'] = (df_merged['measured_freq_THz'] - df_merged['ref_freq_THz']) * 1000
+        
+        # Create 4x4 grid of subplots (one per tile)
+        fig, axes = plt.subplots(4, 4, figsize=(20, 16))
+        axes = axes.flatten()
+        
+        # Plot each tile
+        for tile_idx in range(16):
+            ax = axes[tile_idx]
+            df_tile = df_merged[df_merged['tile_id'] == tile_idx]
+            
+            if len(df_tile) > 0:
+                # Plot BANK_A
+                df_a = df_tile[df_tile['bank_type'] == 'BANK_A']
+                for channel in df_a['channel'].unique():
+                    df_ch = df_a[df_a['channel'] == channel]
+                    ax.plot(df_ch['hours'], df_ch['freq_error_GHz'], 
+                           color='red', alpha=0.6, linewidth=0.8)
+                
+                # Plot BANK_B
+                df_b = df_tile[df_tile['bank_type'] == 'BANK_B']
+                for channel in df_b['channel'].unique():
+                    df_ch = df_b[df_b['channel'] == channel]
+                    ax.plot(df_ch['hours'], df_ch['freq_error_GHz'], 
+                           color='blue', alpha=0.6, linewidth=0.8)
+            
+            # Add spec lines at ±20 GHz
+            ax.axhline(y=20, color='red', linestyle='--', linewidth=1, alpha=0.5)
+            ax.axhline(y=-20, color='red', linestyle='--', linewidth=1, alpha=0.5)
+            ax.fill_between(ax.get_xlim(), -20, 20, color='green', alpha=0.1)
+            
+            ax.set_xlabel('Time (hours)', fontsize=18)
+            ax.set_ylabel('Frequency Error (GHz)', fontsize=18)
+            ax.tick_params(labelsize=15)
+            ax.grid(True, alpha=0.3)
+            ax.set_ylim(-100, 100)
+            
+            # Add tile label
+            ax.text(0.02, 0.98, f'Tile {tile_idx+1}', 
+                   transform=ax.transAxes, fontsize=16, 
+                   verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
+        # Add legend to first subplot
+        from matplotlib.lines import Line2D
+        legend_elements = [
+            Line2D([0], [0], color='red', lw=2, label='Set A'),
+            Line2D([0], [0], color='blue', lw=2, label='Set B')
+        ]
+        axes[0].legend(handles=legend_elements, loc='upper left', fontsize=15)
+        
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"  ✓ Saved: {output_path.name}")
+    
+    def _plot_missionmode_power(self, df_expanded, output_path, title_suffix):
+        """Plot optical power for all tiles in mission mode."""
+        print(f"\nGenerating mission mode power plot: {output_path.name}")
+        
+        # Convert µW to dBm
+        df_expanded['power_dBm'] = 10 * np.log10(df_expanded['pic_mpd_value_uw'] / 1000)
+        
+        # Create 4x4 grid of subplots (one per tile)
+        fig, axes = plt.subplots(4, 4, figsize=(20, 16))
+        axes = axes.flatten()
+        
+        # Plot each tile
+        for tile_idx in range(16):
+            ax = axes[tile_idx]
+            df_tile = df_expanded[df_expanded['tile_id'] == tile_idx]
+            
+            if len(df_tile) > 0:
+                # Plot BANK_A
+                df_a = df_tile[df_tile['bank_type'] == 'BANK_A']
+                for channel in df_a['channel'].unique():
+                    df_ch = df_a[df_a['channel'] == channel]
+                    ax.plot(df_ch['hours'], df_ch['power_dBm'], 
+                           color='red', alpha=0.6, linewidth=0.8)
+                
+                # Plot BANK_B
+                df_b = df_tile[df_tile['bank_type'] == 'BANK_B']
+                for channel in df_b['channel'].unique():
+                    df_ch = df_b[df_b['channel'] == channel]
+                    ax.plot(df_ch['hours'], df_ch['power_dBm'], 
+                           color='blue', alpha=0.6, linewidth=0.8)
+            
+            # Add spec lines (10-17 mW = 10-12.3 dBm)
+            spec_min_dBm = 10 * np.log10(10)  # 10 dBm
+            spec_max_dBm = 10 * np.log10(17)  # 12.3 dBm
+            ax.axhline(y=spec_min_dBm, color='red', linestyle='--', linewidth=1, alpha=0.5)
+            ax.axhline(y=spec_max_dBm, color='red', linestyle='--', linewidth=1, alpha=0.5)
+            ax.fill_between(ax.get_xlim(), spec_min_dBm, spec_max_dBm, color='green', alpha=0.1)
+            
+            ax.set_xlabel('Time (hours)', fontsize=18)
+            ax.set_ylabel('Optical Power (dBm)', fontsize=18)
+            ax.tick_params(labelsize=15)
+            ax.grid(True, alpha=0.3)
+            ax.set_ylim(5, 15)
+            
+            # Add tile label
+            ax.text(0.02, 0.98, f'Tile {tile_idx+1}', 
+                   transform=ax.transAxes, fontsize=16, 
+                   verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+        
+        # Add legend to first subplot
+        from matplotlib.lines import Line2D
+        legend_elements = [
+            Line2D([0], [0], color='red', lw=2, label='Set A'),
+            Line2D([0], [0], color='blue', lw=2, label='Set B')
+        ]
+        axes[0].legend(handles=legend_elements, loc='upper left', fontsize=15)
+        
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"  ✓ Saved: {output_path.name}")
+    
+    def _plot_regulators(self, df_expanded, output_path, title_suffix):
+        """Plot regulator parameters in 2x2 grid."""
+        print(f"\nGenerating regulators plot: {output_path.name}")
+        
+        fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+        
+        # Get unique DAC orders
+        dac_orders = df_expanded['dac_order'].unique()
+        colors = plt.cm.tab10(np.linspace(0, 1, len(dac_orders)))
+        
+        # a) vout_read vs time
+        ax = axes[0, 0]
+        for i, dac_order in enumerate(dac_orders):
+            df_dac = df_expanded[df_expanded['dac_order'] == dac_order]
+            ax.plot(df_dac['hours'], df_dac['vout_read'], 
+                   label=dac_order, color=colors[i], alpha=0.7, linewidth=1)
+        ax.set_xlabel('Time (hours)', fontsize=12)
+        ax.set_ylabel('Vout (V)', fontsize=12)
+        ax.legend(fontsize=9, loc='best')
+        ax.grid(True, alpha=0.3)
+        ax.tick_params(labelsize=10)
+        
+        # b) iout_read vs time
+        ax = axes[0, 1]
+        for i, dac_order in enumerate(dac_orders):
+            df_dac = df_expanded[df_expanded['dac_order'] == dac_order]
+            ax.plot(df_dac['hours'], df_dac['iout_read'], 
+                   label=dac_order, color=colors[i], alpha=0.7, linewidth=1)
+        ax.set_xlabel('Time (hours)', fontsize=12)
+        ax.set_ylabel('Iout (mA)', fontsize=12)
+        ax.legend(fontsize=9, loc='best')
+        ax.grid(True, alpha=0.3)
+        ax.tick_params(labelsize=10)
+        
+        # c) regulator_power vs time
+        ax = axes[1, 0]
+        for i, dac_order in enumerate(dac_orders):
+            df_dac = df_expanded[df_expanded['dac_order'] == dac_order]
+            ax.plot(df_dac['hours'], df_dac['regulator_power'], 
+                   label=dac_order, color=colors[i], alpha=0.7, linewidth=1)
+        ax.set_xlabel('Time (hours)', fontsize=12)
+        ax.set_ylabel('Regulator Power (W)', fontsize=12)
+        ax.legend(fontsize=9, loc='best')
+        ax.grid(True, alpha=0.3)
+        ax.tick_params(labelsize=10)
+        
+        # d) total power vs time (sum of all regulators)
+        ax = axes[1, 1]
+        df_total = df_expanded.groupby('hours')['regulator_power'].sum().reset_index()
+        ax.plot(df_total['hours'], df_total['regulator_power'], 
+               color='black', linewidth=2, label='Total Power')
+        ax.set_xlabel('Time (hours)', fontsize=12)
+        ax.set_ylabel('Total Power (W)', fontsize=12)
+        ax.legend(fontsize=10, loc='best')
+        ax.grid(True, alpha=0.3)
+        ax.tick_params(labelsize=10)
+        
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"  ✓ Saved: {output_path.name}")
+    
+    def analyze_evt_kenya(self):
+        """Analyze ips.clm.evt.xlsx Kenya tab."""
+        print("\n" + "="*80)
+        print("ANALYZING ips.clm.evt.xlsx - Kenya")
+        print("="*80)
+        
+        excel_file = self.data_path / 'ips.clm.evt.xlsx'
+        df = pd.read_excel(excel_file, sheet_name='Kenya')
+        print(f"Loaded data: {df.shape}")
+        
+        # Prepare data
+        df = self._prepare_data(df, 'Kenya')
+        
+        # Expand data
+        df_reg = self._expand_regulator_data(df)
+        df_opt = self._expand_optical_data(df)
+        
+        print(f"Regulator data points: {len(df_reg)}")
+        print(f"Optical data points: {len(df_opt)}")
+        
+        # Generate plots
+        self._plot_missionmode_freqerror(df_opt, 
+                                         self.results_path / 'missionmode_freqerror_all_tiles_regevt_kenya.png',
+                                         'RegEvt Kenya')
+        self._plot_missionmode_power(df_opt,
+                                     self.results_path / 'missionmode_power_all_tiles_regevt_kenya.png',
+                                     'RegEvt Kenya')
+        self._plot_regulators(df_reg,
+                             self.results_path / 'missionmode_regulators_regevt_kenya.png',
+                             'RegEvt Kenya')
+        
+        print(f"\nKenya analysis complete!")
+    
+    def analyze_evt_endeavour(self):
+        """Analyze ips.clm.evt.xlsx Endevour tab."""
+        print("\n" + "="*80)
+        print("ANALYZING ips.clm.evt.xlsx - Endevour")
+        print("="*80)
+        
+        excel_file = self.data_path / 'ips.clm.evt.xlsx'
+        df = pd.read_excel(excel_file, sheet_name='Endevour')
+        print(f"Loaded data: {df.shape}")
+        
+        # Prepare data
+        df = self._prepare_data(df, 'Endevour')
+        
+        # Expand data
+        df_reg = self._expand_regulator_data(df)
+        df_opt = self._expand_optical_data(df)
+        
+        print(f"Regulator data points: {len(df_reg)}")
+        print(f"Optical data points: {len(df_opt)}")
+        
+        # Generate plots
+        self._plot_missionmode_freqerror(df_opt,
+                                         self.results_path / 'missionmode_freqerror_all_tiles_regevt_endeavour.png',
+                                         'RegEvt Endeavour')
+        self._plot_missionmode_power(df_opt,
+                                     self.results_path / 'missionmode_power_all_tiles_regevt_endeavour.png',
+                                     'RegEvt Endeavour')
+        self._plot_regulators(df_reg,
+                             self.results_path / 'missionmode_regulators_regevt_endeavour.png',
+                             'RegEvt Endeavour')
+        
+        print(f"\nEndevour analysis complete!")
+    
+    def analyze_poweropt_kenya(self):
+        """Analyze ips.clm.power.optimization.xlsx Kenya tab."""
+        print("\n" + "="*80)
+        print("ANALYZING ips.clm.power.optimization.xlsx - Kenya")
+        print("="*80)
+        
+        excel_file = self.data_path / 'ips.clm.power.optimization.xlsx'
+        df = pd.read_excel(excel_file, sheet_name='Kenya')
+        print(f"Loaded data: {df.shape}")
+        
+        # Prepare data
+        df = self._prepare_data(df, 'Kenya')
+        
+        # Expand data
+        df_reg = self._expand_regulator_data(df)
+        df_opt = self._expand_optical_data(df)
+        
+        print(f"Regulator data points: {len(df_reg)}")
+        print(f"Optical data points: {len(df_opt)}")
+        
+        # Generate plots
+        self._plot_missionmode_freqerror(df_opt,
+                                         self.results_path / 'missionmode_freqerror_all_tiles_poweropt_kenya.png',
+                                         'PowerOpt Kenya')
+        self._plot_missionmode_power(df_opt,
+                                     self.results_path / 'missionmode_power_all_tiles_poweropt_kenya.png',
+                                     'PowerOpt Kenya')
+        self._plot_regulators(df_reg,
+                             self.results_path / 'missionmode_regulators_poweropt_kenya.png',
+                             'PowerOpt Kenya')
+        
+        print(f"\nKenya analysis complete!")
+    
+    def analyze_poweropt_endeavour(self):
+        """Analyze ips.clm.power.optimization.xlsx Endeavour tab."""
+        print("\n" + "="*80)
+        print("ANALYZING ips.clm.power.optimization.xlsx - Endeavour")
+        print("="*80)
+        
+        excel_file = self.data_path / 'ips.clm.power.optimization.xlsx'
+        df = pd.read_excel(excel_file, sheet_name='Endeavour')
+        print(f"Loaded data: {df.shape}")
+        
+        # Prepare data
+        df = self._prepare_data(df, 'Endeavour')
+        
+        # Expand data
+        df_reg = self._expand_regulator_data(df)
+        df_opt = self._expand_optical_data(df)
+        
+        print(f"Regulator data points: {len(df_reg)}")
+        print(f"Optical data points: {len(df_opt)}")
+        
+        # Generate plots
+        self._plot_missionmode_freqerror(df_opt,
+                                         self.results_path / 'missionmode_freqerror_all_tiles_poweropt_endeavour.png',
+                                         'PowerOpt Endeavour')
+        self._plot_missionmode_power(df_opt,
+                                     self.results_path / 'missionmode_power_all_tiles_poweropt_endeavour.png',
+                                     'PowerOpt Endeavour')
+        self._plot_regulators(df_reg,
+                             self.results_path / 'missionmode_regulators_poweropt_endeavour.png',
+                             'PowerOpt Endeavour')
+        
+        print(f"\nEndeavour analysis complete!")
     
