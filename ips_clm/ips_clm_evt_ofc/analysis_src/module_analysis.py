@@ -6408,7 +6408,7 @@ class regulators_aggressors:
                         'dac_order': dac_order,
                         'vout_read': vout_values[i],
                         'iout_read': iout_values[i],
-                        'regulator_power': vout_values[i] * iout_values[i] / 1000  # Power in Watts (V * mA / 1000)
+                        'regulator_power': vout_values[i] * iout_values[i]  # Power in Watts (V * A)
                     })
         
         return pd.DataFrame(expanded_data)
@@ -6423,6 +6423,10 @@ class regulators_aggressors:
             
             if len(pic_values) == len(wavelength_values):
                 for channel_idx in range(len(pic_values)):
+                    # Convert wavelength from picometers to nanometers (divide by 1e9)
+                    # The column is named wavelength_nm but actually stores values in pm
+                    wavelength_nm_actual = wavelength_values[channel_idx] / 1e9
+                    
                     expanded_data.append({
                         'tile_id': row['tile_id'],
                         'bank_type': row['bank_type'],
@@ -6430,7 +6434,7 @@ class regulators_aggressors:
                         'hours': row['hours'],
                         'channel': channel_idx,
                         'pic_mpd_value_uw': pic_values[channel_idx],
-                        'wavelength_nm': wavelength_values[channel_idx]
+                        'wavelength_nm': wavelength_nm_actual
                     })
         
         return pd.DataFrame(expanded_data)
@@ -6601,7 +6605,7 @@ class regulators_aggressors:
             ax.plot(df_dac['hours'], df_dac['iout_read'], 
                    label=dac_order, color=colors[i], alpha=0.7, linewidth=1)
         ax.set_xlabel('Time (hours)', fontsize=12)
-        ax.set_ylabel('Iout (mA)', fontsize=12)
+        ax.set_ylabel('Iout (A)', fontsize=12)
         ax.legend(fontsize=9, loc='best')
         ax.grid(True, alpha=0.3)
         ax.tick_params(labelsize=10)
