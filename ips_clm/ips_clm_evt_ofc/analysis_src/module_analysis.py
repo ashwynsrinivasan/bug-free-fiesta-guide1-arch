@@ -56,8 +56,20 @@ class module_analysis:
         self.calibration_path = self.results_path / "calibration"
         self.calibration_path.mkdir(parents=True, exist_ok=True)
         
-        # Load reference grid
-        self.reference_grid = self._load_reference_grid()
+        # Load reference grids (both old for calculations and new for labeling)
+        ref_grid_data = self._load_reference_grid()
+        if ref_grid_data:
+            # Old grid for frequency error calculations (matches data collection)
+            self.old_reference_grid = ref_grid_data.get('old_reference_grid', ref_grid_data)
+            # New grid for labeling/nomenclature
+            self.reference_grid = {k: v for k, v in ref_grid_data.items() 
+                                 if k in ['set_a', 'set_b']}
+            # If new grid not found, use old grid as fallback
+            if not self.reference_grid:
+                self.reference_grid = self.old_reference_grid
+        else:
+            self.old_reference_grid = None
+            self.reference_grid = None
         
         # Load specifications
         self.specifications = self._load_specifications()
@@ -65,6 +77,9 @@ class module_analysis:
         # Available modules
         self.modules = ['156', '157', '164', '165', '167', '168', '170', '171']
         self.current_module = None
+        
+        # Channel offset for display (0 for v1: 0-7, 1 for v2: 1-8)
+        self._channel_offset = 0
     
     def _load_reference_grid(self):
         """Load reference grid from YAML file"""
@@ -1744,8 +1759,8 @@ class module_analysis:
         
         # Plot Endeavour - time series and distribution (Bank 0 uses set_a, Bank 1 uses set_b)
         if endeavour_data is not None:
-            freq_error_data = self._plot_freq_error_spec(axes[0, 0], endeavour_data, 'Endeavour', full_sn)
-            self._plot_freq_error_distribution(axes[0, 1], freq_error_data, 'Endeavour', full_sn)
+            freq_error_data, target_wavelength = self._plot_freq_error_spec(axes[0, 0], endeavour_data, 'Endeavour', full_sn)
+            self._plot_freq_error_distribution(axes[0, 1], freq_error_data, 'Endeavour', full_sn, target_wavelength)
         else:
             axes[0, 0].text(0.5, 0.5, 'No Endeavour Data', ha='center', va='center', fontsize=14)
             axes[0, 0].set_title(f'Endeavour - Module {full_sn}')
@@ -1754,8 +1769,8 @@ class module_analysis:
         
         # Plot Kenya - time series and distribution (Bank 0 uses set_a, Bank 1 uses set_b)
         if kenya_data is not None:
-            freq_error_data = self._plot_freq_error_spec(axes[1, 0], kenya_data, 'Kenya', full_sn)
-            self._plot_freq_error_distribution(axes[1, 1], freq_error_data, 'Kenya', full_sn)
+            freq_error_data, target_wavelength = self._plot_freq_error_spec(axes[1, 0], kenya_data, 'Kenya', full_sn)
+            self._plot_freq_error_distribution(axes[1, 1], freq_error_data, 'Kenya', full_sn, target_wavelength)
         else:
             axes[1, 0].text(0.5, 0.5, 'No Kenya Data', ha='center', va='center', fontsize=14)
             axes[1, 0].set_title(f'Kenya - Module {full_sn}')
@@ -1763,16 +1778,79 @@ class module_analysis:
             axes[1, 1].set_title(f'Kenya Distribution - Module {full_sn}')
         
         plt.tight_layout()
-        plot_filename = f'missionmode_freqerror_{full_sn}.png'
-        plt.savefig(self.mission_mode_path / plot_filename, dpi=300, bbox_inches='tight')
+        
+        # Save to alaska_plots subdirectory
+        alaska_path = self.mission_mode_path / 'alaska_plots'
+        alaska_path.mkdir(parents=True, exist_ok=True)
+        
+        plot_filename = f'alaska_missionmode_freqerror_{full_sn}.png'
+        plt.savefig(alaska_path / plot_filename, dpi=300, bbox_inches='tight')
         plt.close()
         
-        print(f"  ✓ Plot saved: {plot_filename}")
+        print(f"  ✓ Plot saved: {alaska_path.name}/{plot_filename}")
+        
+        # Also generate v2 with channel numbering 1-8
+        self._plot_mission_mode_frequency_error_v2(endeavour_data, kenya_data, full_sn)
+    
+    def _plot_mission_mode_frequency_error_v2(self, endeavour_data, kenya_data, full_sn):
+        """Plot frequency error compared to reference grid (v2 with channel numbering 1-8)"""
+        print(f"  Generating mission mode frequency error plot (v2)...")
+        
+        if self.reference_grid is None:
+            print(f"  Warning: No reference grid available, skipping frequency error analysis")
+            return
+        
+        # Set channel offset for v2 (1-8 instead of 0-7)
+        self._channel_offset = 1
+        
+        # Create figure with equal subplot widths
+        # Both time series and distribution: 1.5:1 aspect ratio (height:width)
+        fig = plt.figure(figsize=(16, 24))
+        gs = fig.add_gridspec(2, 2, width_ratios=[1, 1], hspace=0.3, wspace=0.3)
+        axes = np.array([[fig.add_subplot(gs[0, 0]), fig.add_subplot(gs[0, 1])],
+                        [fig.add_subplot(gs[1, 0]), fig.add_subplot(gs[1, 1])]])
+        
+        # Plot Endeavour - time series and distribution (Bank 0 uses set_a, Bank 1 uses set_b)
+        if endeavour_data is not None:
+            freq_error_data, target_wavelength = self._plot_freq_error_spec(axes[0, 0], endeavour_data, 'Endeavour', full_sn)
+            self._plot_freq_error_distribution(axes[0, 1], freq_error_data, 'Endeavour', full_sn, target_wavelength)
+        else:
+            axes[0, 0].text(0.5, 0.5, 'No Endeavour Data', ha='center', va='center', fontsize=14)
+            axes[0, 0].set_title(f'Endeavour - Module {full_sn}')
+            axes[0, 1].text(0.5, 0.5, 'No Endeavour Data', ha='center', va='center', fontsize=14)
+            axes[0, 1].set_title(f'Endeavour Distribution - Module {full_sn}')
+        
+        # Plot Kenya - time series and distribution (Bank 0 uses set_a, Bank 1 uses set_b)
+        if kenya_data is not None:
+            freq_error_data, target_wavelength = self._plot_freq_error_spec(axes[1, 0], kenya_data, 'Kenya', full_sn)
+            self._plot_freq_error_distribution(axes[1, 1], freq_error_data, 'Kenya', full_sn, target_wavelength)
+        else:
+            axes[1, 0].text(0.5, 0.5, 'No Kenya Data', ha='center', va='center', fontsize=14)
+            axes[1, 0].set_title(f'Kenya - Module {full_sn}')
+            axes[1, 1].text(0.5, 0.5, 'No Kenya Data', ha='center', va='center', fontsize=14)
+            axes[1, 1].set_title(f'Kenya Distribution - Module {full_sn}')
+        
+        plt.tight_layout()
+        
+        # Save to alaska_plots subdirectory
+        alaska_path = self.mission_mode_path / 'alaska_plots'
+        alaska_path.mkdir(parents=True, exist_ok=True)
+        
+        plot_filename = f'alaska_missionmode_freqerror_v2_{full_sn}.png'
+        plt.savefig(alaska_path / plot_filename, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        # Reset channel offset
+        self._channel_offset = 0
+        
+        print(f"  ✓ Plot saved: {alaska_path.name}/{plot_filename}")
     
     def _plot_freq_error_spec(self, ax, df, spec_name, full_sn):
         """Plot frequency error for one specification using wavelength column
         Bank 0 uses set_a, Bank 1 uses set_b
-        Returns: dict with {(bank, channel): [freq_error_values]} for distribution plotting
+        Returns: tuple of (freq_error_data dict, target_wavelength dict)
+        freq_error_data: {(bank, channel): [freq_error_values]}
+        target_wavelength: {(bank, channel): target_wavelength_nm}
         """
         # Find wavelength column
         wl_col = None
@@ -1783,7 +1861,7 @@ class module_analysis:
         
         if wl_col is None:
             ax.text(0.5, 0.5, 'No wavelength data', ha='center', va='center', fontsize=12)
-            return {}
+            return {}, {}
         
         # Color maps for channels
         colors_b0 = plt.cm.Blues(np.linspace(0.4, 0.9, 8))
@@ -1794,6 +1872,7 @@ class module_analysis:
         
         # Store frequency error data for distribution plot
         freq_error_data = {}
+        target_wavelength = {}
         
         # Plot each bank and channel combination
         for idx, row in df.iterrows():
@@ -1819,17 +1898,28 @@ class module_analysis:
             if not wavelength_values_nm:
                 continue
             
-            # Get reference wavelength from grid
+            # Get reference wavelength from OLD grid for frequency error calculations
             grid_num = channel + 1  # Grid 1-8 corresponds to channel 0-7
             grid_key = f'grid_{grid_num}'
             
-            if set_name not in self.reference_grid or grid_key not in self.reference_grid[set_name]:
+            if not self.old_reference_grid or set_name not in self.old_reference_grid or grid_key not in self.old_reference_grid[set_name]:
                 continue
             
-            ref_wl_nm = self.reference_grid[set_name][grid_key]['wavelength_nm']
-            ref_freq_thz = self.reference_grid[set_name][grid_key]['frequency_thz']
+            # Use OLD grid for frequency error calculation (matches data collection)
+            ref_wl_nm_old = self.old_reference_grid[set_name][grid_key]['wavelength_nm']
+            ref_freq_thz = self.old_reference_grid[set_name][grid_key]['frequency_thz']
+            
+            # Get target wavelength from NEW grid for labeling
+            if self.reference_grid and set_name in self.reference_grid and grid_key in self.reference_grid[set_name]:
+                ref_wl_nm_new = self.reference_grid[set_name][grid_key]['wavelength_nm']
+            else:
+                ref_wl_nm_new = ref_wl_nm_old  # Fallback to old if new not available
+            
+            # Store target wavelength from NEW grid for labeling
+            target_wavelength[(bank, channel)] = ref_wl_nm_new
             
             # Calculate frequency error for each wavelength measurement
+            # Use OLD reference frequency for calculation (matches data collection)
             freq_errors = []
             for wl in wavelength_values_nm:
                 measured_freq_thz = c_speed_light / wl
@@ -1860,13 +1950,15 @@ class module_analysis:
             freq_error_data[(bank, channel)] = freq_errors_filtered.tolist()
             
             # Plot based on bank
+            # channel_offset: 0 for v1 (0-7), 1 for v2 (1-8)
+            channel_display = channel + (getattr(self, '_channel_offset', 0))
             if bank == 0:
                 ax.plot(x_values, freq_errors_filtered, '-', 
-                       label=f'B0-Ch{channel}', 
+                       label=f'Set A-Ch{channel_display}', 
                        linewidth=1.5, color=colors_b0[channel])
             else:
                 ax.plot(x_values, freq_errors_filtered, '--', 
-                       label=f'B1-Ch{channel}', 
+                       label=f'Set B-Ch{channel_display}', 
                        linewidth=1.5, color=colors_b1[channel])
         
         # Add specification limits if available
@@ -1894,15 +1986,18 @@ class module_analysis:
         # Set x-axis limits
         ax.set_xlim(0, 3000)
         
+        # Set y-axis limits to fixed range for Alaska plots
         ax.set_ylim(-40, 40)
         ax.axhline(y=0, color='k', linestyle='-', linewidth=0.5)
         ax.legend(loc='best', fontsize=7, ncol=2)
         ax.grid(True, alpha=0.3)
         
-        return freq_error_data
+        return freq_error_data, target_wavelength
     
-    def _plot_freq_error_distribution(self, ax, freq_error_data, spec_name, full_sn):
-        """Plot statistical distribution of frequency error for each channel"""
+    def _plot_freq_error_distribution(self, ax, freq_error_data, spec_name, full_sn, target_wavelength=None):
+        """Plot statistical distribution of frequency error for each channel
+        target_wavelength: dict with {(bank, channel): target_wavelength_nm}
+        """
         if not freq_error_data:
             ax.text(0.5, 0.5, 'No frequency error data', ha='center', va='center', fontsize=12)
             return
@@ -1924,12 +2019,14 @@ class module_analysis:
             positions.append(i)
             data_list.append(freq_error_data[(bank, channel)])
             
+            # channel_offset: 0 for v1 (0-7), 1 for v2 (1-8)
+            channel_display = channel + (getattr(self, '_channel_offset', 0))
             if bank == 0:
                 colors_list.append(colors_b0[channel])
-                labels_list.append(f'B0-Ch{channel}')
+                labels_list.append(f'Set A-Ch{channel_display}')
             else:
                 colors_list.append(colors_b1[channel])
-                labels_list.append(f'B1-Ch{channel}')
+                labels_list.append(f'Set B-Ch{channel_display}')
         
         # Create box plot (horizontal orientation)
         bp = ax.boxplot(data_list, positions=positions, vert=False, widths=0.6,
@@ -1959,9 +2056,15 @@ class module_analysis:
             
             # Position annotation to the right
             y_pos = positions[i]
+            bank, channel = sorted_keys[i]
             
             # Add text annotation with box
-            annotation_text = f'μ̃={median_val:.2f}GHz\nσ={sigma_val:.2f}GHz'
+            if target_wavelength and (bank, channel) in target_wavelength:
+                target_wl = target_wavelength[(bank, channel)]
+                annotation_text = f'μ̃={median_val:.2f}GHz\nσ={sigma_val:.2f}GHz\nλ={target_wl:.2f}nm'
+            else:
+                annotation_text = f'μ̃={median_val:.2f}GHz\nσ={sigma_val:.2f}GHz'
+            
             ax.text(annotation_x_offset, y_pos, annotation_text, 
                    fontsize=8, ha='left', va='center',
                    transform=ax.get_yaxis_transform(),
@@ -1991,12 +2094,13 @@ class module_analysis:
         ax.set_yticks(positions)
         ax.set_yticklabels(labels_list)
         ax.set_xlabel('Frequency Error (GHz)')
-        ax.set_ylabel('Bank-Channel')
+        ax.set_ylabel('Set-Channel')
         
-        # Add dashed line between B0 and B1
+        # Add dashed line between Set A and Set B
         if len(positions) > 8:
             ax.axhline(y=7.5, color='gray', linestyle='--', linewidth=1, alpha=0.5)
         
+        # Set x-axis limits to fixed range for Alaska plots
         ax.set_xlim(-40, 40)
         
         # Calculate overall statistics

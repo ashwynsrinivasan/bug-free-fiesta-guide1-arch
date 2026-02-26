@@ -1822,7 +1822,7 @@ class tpanalysis:
         plt.savefig(output_path, dpi=1200, bbox_inches='tight')
         plt.close()
         print(f"Saved: {output_path}")
-    
+
     def ofc_plotter(self):
         """
         OFC plotter for frequency error and power distribution.
