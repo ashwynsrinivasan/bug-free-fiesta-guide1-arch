@@ -2,11 +2,9 @@
 """
 TP2-4 analysis for CLM data under data/clm_data_onet_sftp.
 
-Plots match the style and filenames used in
-ips_clm_gen1/clm_mfg_data/analysis_results/ (tp2p4_*_summary.png):
-  - tp2p4_freq_error_summary.png
-  - tp2p4_center_freq_error_summary.png
-  - tp2p4_channel_spacing_error_summary.png
+Writes separate tile-scatter and distribution figures:
+  - tp2p4_tile_vs_*.png / tp2p4_distribution_vs_*.png
+Distribution views use horizontal histograms (y = performance in GHz, x = count) with raw samples overlaid.
 """
 from __future__ import annotations
 
@@ -167,22 +165,96 @@ def calculate_center_freq_spacing_errors(df: pd.DataFrame, wl_grid: dict) -> tup
     return pd.DataFrame(center_freq_results), pd.DataFrame(spacing_results)
 
 
-def plot_tp2p4_freq_error(df: pd.DataFrame, output_path: Path) -> None:
-    if df.empty:
-        print("No data for frequency error plot")
-        return
+def _bank_legend() -> list[Line2D]:
+    return [
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="w",
+            markerfacecolor="blue",
+            markersize=10,
+            markeredgecolor="black",
+            linewidth=1.5,
+            label="Bank 0",
+        ),
+        Line2D(
+            [0],
+            [0],
+            marker="^",
+            color="w",
+            markerfacecolor="red",
+            markersize=10,
+            markeredgecolor="black",
+            linewidth=1.5,
+            label="Bank 1",
+        ),
+    ]
 
+
+def _save_single_figure(fig, output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=1200, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved: {output_path}")
+
+
+def _ordered_tiles(df: pd.DataFrame) -> list[str]:
+    v1 = sorted(df[df["Version"] == "v1"]["Tile_SN"].unique())
+    v2 = sorted(df[df["Version"] == "v2"]["Tile_SN"].unique())
+    return v1 + v2
+
+
+def _horizontal_hist_with_points(
+    ax,
+    values: np.ndarray,
+    color: str,
+    ylo: float,
+    yhi: float,
+    *,
+    bins: int = 28,
+) -> None:
+    """Histogram with performance (GHz) on y-axis, count on x-axis; overlay raw samples."""
+    values = np.asarray(values, dtype=float)
+    if values.size == 0:
+        ax.set_xlim(0, 1)
+        ax.set_ylim(ylo, yhi)
+        return
+    edges = np.linspace(ylo, yhi, bins + 1)
+    n, _, _ = ax.hist(
+        values,
+        bins=edges,
+        orientation="horizontal",
+        color=color,
+        alpha=0.55,
+        edgecolor="black",
+        linewidth=0.35,
+    )
+    xmax = float(np.max(n)) if n.size else 1.0
+    xmax = max(xmax, 1.0)
+    jitter_x = np.random.uniform(0.0, 0.16 * xmax, size=len(values))
+    ax.scatter(
+        jitter_x,
+        values,
+        color="black",
+        s=4,
+        alpha=0.18,
+        zorder=3,
+        linewidths=0,
+    )
+    ax.set_xlim(0, xmax * 1.15)
+    ax.set_ylim(ylo, yhi)
+
+
+def plot_tp2p4_freq_error_tiles(df: pd.DataFrame, output_path: Path) -> None:
+    if df.empty:
+        print("No data for frequency error (tiles) plot")
+        return
     sns.set_style("whitegrid")
-    fig = plt.figure(figsize=(24, 8))
-    gs = fig.add_gridspec(1, 2, width_ratios=[3, 1], wspace=0.25)
+    fig, ax = plt.subplots(figsize=(24, 8), layout="constrained")
     bank_colors = {0: "blue", 1: "red"}
     bank_markers = {0: "o", 1: "^"}
-
-    ax_left = fig.add_subplot(gs[0, 0])
-    v1_tiles = sorted(df[df["Version"] == "v1"]["Tile_SN"].unique())
-    v2_tiles = sorted(df[df["Version"] == "v2"]["Tile_SN"].unique())
-    all_tiles = v1_tiles + v2_tiles
-
+    all_tiles = _ordered_tiles(df)
     tile_offset = 0
     for version in ["v1", "v2"]:
         df_version = df[df["Version"] == version]
@@ -197,7 +269,7 @@ def plot_tp2p4_freq_error(df: pd.DataFrame, output_path: Path) -> None:
                         freq_errors = df_channel["Frequency_Error_GHz"].values
                         pos = (tile_offset + tile_idx) * 17 + bank * 8 + channel
                         x_scatter = np.random.normal(pos, 0.15, size=len(freq_errors))
-                        ax_left.scatter(
+                        ax.scatter(
                             x_scatter,
                             freq_errors,
                             color=bank_colors[bank],
@@ -208,159 +280,58 @@ def plot_tp2p4_freq_error(df: pd.DataFrame, output_path: Path) -> None:
                             linewidth=0.5,
                         )
         tile_offset += len(tiles)
-
     tile_positions = [(i * 17 + 7.5) for i in range(len(all_tiles))]
-    ax_left.set_xticks(tile_positions)
-    ax_left.set_xticklabels(all_tiles, rotation=90, fontsize=7)
-    ax_left.set_xlabel("Tile_SN", fontsize=13, fontweight="bold")
-    ax_left.set_ylabel("Frequency Error (GHz)", fontsize=13, fontweight="bold")
-    ax_left.set_title("Frequency Error by Tile", fontsize=14, fontweight="bold")
-    ax_left.set_ylim(-50, 50)
-    ax_left.grid(True, alpha=0.3)
-
-    ax_right = fig.add_subplot(gs[0, 1])
-    box_data = []
-    box_positions = []
-    box_colors = []
-    for bank in [0, 1]:
-        df_bank = df[df["Bank"] == bank]
-        for channel in range(8):
-            df_channel = df_bank[df_bank["Channel"] == channel]
-            if not df_channel.empty:
-                freq_errors = df_channel["Frequency_Error_GHz"].values
-                y_pos = bank * 8 + channel
-                box_data.append(freq_errors)
-                box_positions.append(y_pos)
-                box_colors.append(bank_colors[bank])
-
-    parts = ax_right.violinplot(
-        box_data,
-        positions=box_positions,
-        vert=False,
-        widths=0.7,
-        showmeans=False,
-        showmedians=False,
-        showextrema=False,
-    )
-    for pc, color in zip(parts["bodies"], box_colors):
-        pc.set_facecolor(color)
-        pc.set_alpha(0.6)
-        pc.set_edgecolor("black")
-        pc.set_linewidth(1.5)
-
-    ax_right.boxplot(
-        box_data,
-        positions=box_positions,
-        vert=False,
-        widths=0.3,
-        patch_artist=True,
-        showfliers=False,
-        boxprops=dict(facecolor="white", edgecolor="black", linewidth=2),
-        whiskerprops=dict(color="black", linewidth=2),
-        capprops=dict(color="black", linewidth=2),
-        medianprops=dict(color="red", linewidth=2.5),
-    )
-
-    annotation_x = 30
-    for bank in [0, 1]:
-        df_bank = df[df["Bank"] == bank]
-        for channel in range(8):
-            df_channel = df_bank[df_bank["Channel"] == channel]
-            if not df_channel.empty:
-                freq_errors = df_channel["Frequency_Error_GHz"].values
-                y_pos = bank * 8 + channel
-                median = np.median(freq_errors)
-                std = np.std(freq_errors)
-                annotation_text = f"μ̃={median:.1f}GHz\nσ={std:.2f}GHz"
-                ax_right.text(
-                    annotation_x,
-                    y_pos,
-                    annotation_text,
-                    fontsize=7,
-                    ha="left",
-                    va="center",
-                    bbox=dict(
-                        boxstyle="round,pad=0.3",
-                        facecolor="white",
-                        edgecolor=bank_colors[bank],
-                        alpha=0.8,
-                        linewidth=1,
-                    ),
-                )
-
-    all_freq_errors = df["Frequency_Error_GHz"].values
-    overall_median = np.median(all_freq_errors)
-    overall_std = np.std(all_freq_errors)
-    yticks = list(range(16))
-    yticklabels = [f"B0-Ch{i}" for i in range(8)] + [f"B1-Ch{i}" for i in range(8)]
-    ax_right.set_yticks(yticks)
-    ax_right.set_yticklabels(yticklabels, fontsize=9)
-    ax_right.set_xlabel("Frequency Error (GHz)", fontsize=12, fontweight="bold")
-    ax_right.set_ylabel("Bank-Channel", fontsize=12, fontweight="bold")
-    ax_right.set_title(
-        f"Statistical Distribution\nμ̃={overall_median:.2f}GHz, σ={overall_std:.2f}GHz",
-        fontsize=13,
-        fontweight="bold",
-    )
-    ax_right.grid(True, alpha=0.3, axis="x")
-    ax_right.set_ylim(-0.5, 15.5)
-    ax_right.set_xlim(-50, 50)
-    ax_right.axhline(y=7.5, color="gray", linestyle="--", linewidth=1.5, alpha=0.5)
-
-    legend_elements = [
-        Line2D(
-            [0],
-            [0],
-            marker="o",
-            color="w",
-            markerfacecolor="blue",
-            markersize=10,
-            markeredgecolor="black",
-            linewidth=1.5,
-            label="Bank 0",
-        ),
-        Line2D(
-            [0],
-            [0],
-            marker="^",
-            color="w",
-            markerfacecolor="red",
-            markersize=10,
-            markeredgecolor="black",
-            linewidth=1.5,
-            label="Bank 1",
-        ),
-    ]
-    ax_left.legend(handles=legend_elements, loc="upper right", ncol=2, fontsize=10, frameon=True, framealpha=0.9)
-    plt.tight_layout()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_path, dpi=1200, bbox_inches="tight")
-    plt.close()
-    print(f"Saved: {output_path}")
+    ax.set_xticks(tile_positions)
+    ax.set_xticklabels(all_tiles, rotation=90, fontsize=7)
+    ax.set_xlabel("Tile_SN", fontsize=13, fontweight="bold")
+    ax.set_ylabel("Frequency Error (GHz)", fontsize=13, fontweight="bold")
+    ax.set_ylim(-50, 50)
+    ax.grid(True, alpha=0.3)
+    ax.legend(handles=_bank_legend(), loc="upper right", ncol=2, fontsize=10, frameon=True, framealpha=0.9)
+    _save_single_figure(fig, output_path)
 
 
-def plot_center_freq_error(df: pd.DataFrame, output_path: Path) -> None:
+def plot_tp2p4_freq_error_distribution(df: pd.DataFrame, output_path: Path) -> None:
     if df.empty:
-        print("No data for center frequency error plot")
+        print("No data for frequency error (distribution) plot")
         return
-
     sns.set_style("whitegrid")
-    fig = plt.figure(figsize=(24, 8))
-    gs = fig.add_gridspec(1, 2, width_ratios=[3, 0.38], wspace=0.25)
+    ylo, yhi = -50.0, 50.0
+    bank_colors = {0: "blue", 1: "red"}
+    fig, axes = plt.subplots(8, 2, figsize=(11, 22), layout="constrained", sharey=True)
+    for bank in [0, 1]:
+        df_bank = df[df["Bank"] == bank]
+        for ch in range(8):
+            ax = axes[ch, bank]
+            sub = df_bank[df_bank["Channel"] == ch]
+            vals = sub["Frequency_Error_GHz"].values if not sub.empty else np.array([])
+            _horizontal_hist_with_points(ax, vals, bank_colors[bank], ylo, yhi, bins=26)
+            ax.grid(True, alpha=0.3, axis="both")
+            ax.set_ylabel(f"Ch {ch}", fontsize=9)
+            if ch < 7:
+                ax.tick_params(labelbottom=False)
+            if bank == 1:
+                ax.tick_params(labelleft=False)
+    fig.supylabel("Frequency error (GHz)", fontsize=12, fontweight="bold")
+    fig.supxlabel("Count", fontsize=12, fontweight="bold")
+    _save_single_figure(fig, output_path)
+
+
+def plot_center_freq_error_tiles(df: pd.DataFrame, output_path: Path) -> None:
+    if df.empty:
+        print("No data for center frequency error (tiles) plot")
+        return
+    sns.set_style("whitegrid")
+    fig, ax = plt.subplots(figsize=(24, 8), layout="constrained")
     bank_colors = {0: "blue", 1: "red"}
     bank_markers = {0: "o", 1: "^"}
-
-    ax_left = fig.add_subplot(gs[0, 0])
-    v1_tiles = sorted(df[df["Version"] == "v1"]["Tile_SN"].unique())
-    v2_tiles = sorted(df[df["Version"] == "v2"]["Tile_SN"].unique())
-    all_tiles = v1_tiles + v2_tiles
+    all_tiles = _ordered_tiles(df)
     tile_to_pos = {tile: i for i, tile in enumerate(all_tiles)}
-
     for bank in [0, 1]:
         df_bank = df[df["Bank"] == bank]
         x_pos = [tile_to_pos[tile] for tile in df_bank["Tile_SN"]]
         y_vals = df_bank["Center_Freq_Error_GHz"].values
-        ax_left.scatter(
+        ax.scatter(
             x_pos,
             y_vals,
             color=bank_colors[bank],
@@ -371,108 +342,40 @@ def plot_center_freq_error(df: pd.DataFrame, output_path: Path) -> None:
             linewidth=0.8,
             label=f"Bank {bank}",
         )
-
-    ax_left.set_xticks(range(len(all_tiles)))
-    ax_left.set_xticklabels(all_tiles, rotation=90, fontsize=8)
-    ax_left.set_xlabel("Tile_SN", fontsize=13, fontweight="bold")
-    ax_left.set_ylabel("Center Frequency Error (GHz)", fontsize=13, fontweight="bold")
-    ax_left.set_title("Center Frequency Error by Tile", fontsize=14, fontweight="bold")
-    ax_left.set_ylim(-50, 50)
-    ax_left.grid(True, alpha=0.3)
-
-    ax_right = fig.add_subplot(gs[0, 1])
-    all_errors = df["Center_Freq_Error_GHz"].values
-    parts = ax_right.violinplot(
-        [all_errors], positions=[0], vert=True, widths=0.7, showmeans=False, showmedians=False, showextrema=False
-    )
-    for pc in parts["bodies"]:
-        pc.set_facecolor("purple")
-        pc.set_alpha(0.6)
-        pc.set_edgecolor("black")
-        pc.set_linewidth(1.5)
-
-    ax_right.boxplot(
-        [all_errors],
-        positions=[0],
-        widths=0.3,
-        patch_artist=True,
-        showfliers=False,
-        boxprops=dict(facecolor="white", edgecolor="black", linewidth=2),
-        whiskerprops=dict(color="black", linewidth=2),
-        capprops=dict(color="black", linewidth=2),
-        medianprops=dict(color="red", linewidth=2.5),
-    )
-
-    overall_mean = np.mean(all_errors)
-    overall_std = np.std(all_errors)
-    annotation_y = 20 - (20 - (-20)) * 0.08
-    annotation_text = f"μ={overall_mean:.2f}GHz\nσ={overall_std:.2f}GHz"
-    ax_right.text(
-        0.3,
-        annotation_y,
-        annotation_text,
-        fontsize=10,
-        ha="left",
-        va="top",
-        bbox=dict(boxstyle="round,pad=0.5", facecolor="white", edgecolor="purple", alpha=0.9, linewidth=2),
-    )
-    ax_right.set_xticks([0])
-    ax_right.set_xticklabels(["Both Banks"], fontsize=11, fontweight="bold")
-    ax_right.set_ylabel("Center Frequency Error (GHz)", fontsize=12, fontweight="bold")
-    ax_right.set_title("Statistical Distribution", fontsize=13, fontweight="bold")
-    ax_right.grid(True, alpha=0.3, axis="y")
-    ax_right.set_ylim(-50, 50)
-    ax_right.set_xlim(-0.5, 0.5)
-
-    legend_elements = [
-        Line2D(
-            [0],
-            [0],
-            marker="o",
-            color="w",
-            markerfacecolor="blue",
-            markersize=10,
-            markeredgecolor="black",
-            linewidth=1.5,
-            label="Bank 0",
-        ),
-        Line2D(
-            [0],
-            [0],
-            marker="^",
-            color="w",
-            markerfacecolor="red",
-            markersize=10,
-            markeredgecolor="black",
-            linewidth=1.5,
-            label="Bank 1",
-        ),
-    ]
-    ax_left.legend(handles=legend_elements, loc="upper right", ncol=2, fontsize=10, frameon=True, framealpha=0.9)
-    plt.tight_layout()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_path, dpi=1200, bbox_inches="tight")
-    plt.close()
-    print(f"Saved: {output_path}")
+    ax.set_xticks(range(len(all_tiles)))
+    ax.set_xticklabels(all_tiles, rotation=90, fontsize=8)
+    ax.set_xlabel("Tile_SN", fontsize=13, fontweight="bold")
+    ax.set_ylabel("Center Frequency Error (GHz)", fontsize=13, fontweight="bold")
+    ax.set_ylim(-50, 50)
+    ax.grid(True, alpha=0.3)
+    ax.legend(handles=_bank_legend(), loc="upper right", ncol=2, fontsize=10, frameon=True, framealpha=0.9)
+    _save_single_figure(fig, output_path)
 
 
-def plot_channel_spacing_error(summary_df: pd.DataFrame, spacing_df: pd.DataFrame, output_path: Path) -> None:
-    if summary_df.empty or spacing_df.empty:
-        print("No data for channel spacing error plot")
+def plot_center_freq_error_distribution(df: pd.DataFrame, output_path: Path) -> None:
+    if df.empty:
+        print("No data for center frequency error (distribution) plot")
         return
-
     sns.set_style("whitegrid")
-    fig = plt.figure(figsize=(24, 8))
-    gs = fig.add_gridspec(1, 2, width_ratios=[3, 1], wspace=0.25)
+    fig, ax = plt.subplots(figsize=(8, 10), layout="constrained")
+    all_errors = df["Center_Freq_Error_GHz"].values
+    _horizontal_hist_with_points(ax, all_errors, "purple", -50.0, 50.0, bins=32)
+    ax.set_xlabel("Count", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Center frequency error (GHz)", fontsize=12, fontweight="bold")
+    ax.grid(True, alpha=0.3, axis="both")
+    _save_single_figure(fig, output_path)
+
+
+def plot_channel_spacing_error_tiles(summary_df: pd.DataFrame, spacing_df: pd.DataFrame, output_path: Path) -> None:
+    if summary_df.empty or spacing_df.empty:
+        print("No data for channel spacing error (tiles) plot")
+        return
+    sns.set_style("whitegrid")
+    fig, ax = plt.subplots(figsize=(24, 8), layout="constrained")
     bank_colors = {0: "blue", 1: "red"}
     bank_markers = {0: "o", 1: "^"}
-
-    ax_left = fig.add_subplot(gs[0, 0])
-    v1_tiles = sorted(summary_df[summary_df["Version"] == "v1"]["Tile_SN"].unique())
-    v2_tiles = sorted(summary_df[summary_df["Version"] == "v2"]["Tile_SN"].unique())
-    all_tiles = v1_tiles + v2_tiles
+    all_tiles = _ordered_tiles(summary_df)
     tile_to_pos = {tile: i for i, tile in enumerate(all_tiles)}
-
     for bank in [0, 1]:
         df_bank = spacing_df[spacing_df["Bank"] == bank]
         for tile in all_tiles:
@@ -481,7 +384,7 @@ def plot_channel_spacing_error(summary_df: pd.DataFrame, spacing_df: pd.DataFram
                 x_pos = tile_to_pos[tile]
                 y_vals = df_tile["Spacing_Error_GHz"].values
                 x_scatter = np.random.normal(x_pos, 0.15, size=len(y_vals))
-                ax_left.scatter(
+                ax.scatter(
                     x_scatter,
                     y_vals,
                     color=bank_colors[bank],
@@ -491,134 +394,40 @@ def plot_channel_spacing_error(summary_df: pd.DataFrame, spacing_df: pd.DataFram
                     edgecolors="black",
                     linewidth=0.3,
                 )
+    ax.set_xticks(range(len(all_tiles)))
+    ax.set_xticklabels(all_tiles, rotation=90, fontsize=8)
+    ax.set_xlabel("Tile_SN", fontsize=13, fontweight="bold")
+    ax.set_ylabel("Channel Spacing Error (GHz)", fontsize=13, fontweight="bold")
+    ax.set_ylim(-50, 50)
+    ax.grid(True, alpha=0.3)
+    ax.legend(handles=_bank_legend(), loc="upper right", ncol=2, fontsize=10, frameon=True, framealpha=0.9)
+    _save_single_figure(fig, output_path)
 
-    ax_left.set_xticks(range(len(all_tiles)))
-    ax_left.set_xticklabels(all_tiles, rotation=90, fontsize=8)
-    ax_left.set_xlabel("Tile_SN", fontsize=13, fontweight="bold")
-    ax_left.set_ylabel("Channel Spacing Error (GHz)", fontsize=13, fontweight="bold")
-    ax_left.set_title("Channel Spacing Error by Tile", fontsize=14, fontweight="bold")
-    ax_left.set_ylim(-50, 50)
-    ax_left.grid(True, alpha=0.3)
 
-    ax_right = fig.add_subplot(gs[0, 1])
-    box_data = []
-    box_positions = []
-    box_colors = []
+def plot_channel_spacing_error_distribution(spacing_df: pd.DataFrame, output_path: Path) -> None:
+    if spacing_df.empty:
+        print("No data for channel spacing error (distribution) plot")
+        return
+    sns.set_style("whitegrid")
+    ylo, yhi = -50.0, 50.0
+    bank_colors = {0: "blue", 1: "red"}
+    fig, axes = plt.subplots(7, 2, figsize=(11, 19), layout="constrained", sharey=True)
     for bank in [0, 1]:
         df_bank = spacing_df[spacing_df["Bank"] == bank]
-        for ch_from in range(7):
-            df_transition = df_bank[(df_bank["Channel_From"] == ch_from) & (df_bank["Channel_To"] == ch_from + 1)]
-            if not df_transition.empty:
-                errors = df_transition["Spacing_Error_GHz"].values
-                y_pos = bank * 7 + ch_from
-                box_data.append(errors)
-                box_positions.append(y_pos)
-                box_colors.append(bank_colors[bank])
-
-    parts = ax_right.violinplot(
-        box_data,
-        positions=box_positions,
-        vert=False,
-        widths=0.7,
-        showmeans=False,
-        showmedians=False,
-        showextrema=False,
-    )
-    for pc, color in zip(parts["bodies"], box_colors):
-        pc.set_facecolor(color)
-        pc.set_alpha(0.6)
-        pc.set_edgecolor("black")
-        pc.set_linewidth(1.5)
-
-    ax_right.boxplot(
-        box_data,
-        positions=box_positions,
-        vert=False,
-        widths=0.3,
-        patch_artist=True,
-        showfliers=False,
-        boxprops=dict(facecolor="white", edgecolor="black", linewidth=2),
-        whiskerprops=dict(color="black", linewidth=2),
-        capprops=dict(color="black", linewidth=2),
-        medianprops=dict(color="red", linewidth=2.5),
-    )
-
-    annotation_x = 25
-    for bank in [0, 1]:
-        df_bank = spacing_df[spacing_df["Bank"] == bank]
-        for ch_from in range(7):
-            df_transition = df_bank[(df_bank["Channel_From"] == ch_from) & (df_bank["Channel_To"] == ch_from + 1)]
-            if not df_transition.empty:
-                errors = df_transition["Spacing_Error_GHz"].values
-                y_pos = bank * 7 + ch_from
-                mean_val = np.mean(errors)
-                std_val = np.std(errors)
-                annotation_text = f"μ={mean_val:.2f}GHz\nσ={std_val:.2f}GHz"
-                ax_right.text(
-                    annotation_x,
-                    y_pos,
-                    annotation_text,
-                    fontsize=7,
-                    ha="left",
-                    va="center",
-                    bbox=dict(
-                        boxstyle="round,pad=0.3",
-                        facecolor="white",
-                        edgecolor=bank_colors[bank],
-                        alpha=0.8,
-                        linewidth=1,
-                    ),
-                )
-
-    all_errors = spacing_df["Spacing_Error_GHz"].values
-    overall_mean = np.mean(all_errors)
-    overall_std = np.std(all_errors)
-    yticks = list(range(14))
-    yticklabels = [f"B0: Ch{i}→Ch{i+1}" for i in range(7)] + [f"B1: Ch{i}→Ch{i+1}" for i in range(7)]
-    ax_right.set_yticks(yticks)
-    ax_right.set_yticklabels(yticklabels, fontsize=9)
-    ax_right.set_xlabel("Channel Spacing Error (GHz)", fontsize=12, fontweight="bold")
-    ax_right.set_ylabel("Channel Transition", fontsize=12, fontweight="bold")
-    ax_right.set_title(
-        f"Statistical Distribution\nμ={overall_mean:.2f}GHz, σ={overall_std:.2f}GHz",
-        fontsize=13,
-        fontweight="bold",
-    )
-    ax_right.grid(True, alpha=0.3, axis="x")
-    ax_right.set_ylim(-0.5, 13.5)
-    ax_right.set_xlim(-50, 50)
-    ax_right.axhline(y=6.5, color="gray", linestyle="--", linewidth=1.5, alpha=0.5)
-
-    legend_elements = [
-        Line2D(
-            [0],
-            [0],
-            marker="o",
-            color="w",
-            markerfacecolor="blue",
-            markersize=10,
-            markeredgecolor="black",
-            linewidth=1.5,
-            label="Bank 0",
-        ),
-        Line2D(
-            [0],
-            [0],
-            marker="^",
-            color="w",
-            markerfacecolor="red",
-            markersize=10,
-            markeredgecolor="black",
-            linewidth=1.5,
-            label="Bank 1",
-        ),
-    ]
-    ax_left.legend(handles=legend_elements, loc="upper right", ncol=2, fontsize=10, frameon=True, framealpha=0.9)
-    plt.tight_layout()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_path, dpi=1200, bbox_inches="tight")
-    plt.close()
-    print(f"Saved: {output_path}")
+        for row in range(7):
+            ax = axes[row, bank]
+            sub = df_bank[(df_bank["Channel_From"] == row) & (df_bank["Channel_To"] == row + 1)]
+            vals = sub["Spacing_Error_GHz"].values if not sub.empty else np.array([])
+            _horizontal_hist_with_points(ax, vals, bank_colors[bank], ylo, yhi, bins=26)
+            ax.grid(True, alpha=0.3, axis="both")
+            ax.set_ylabel(f"Ch{row}→{row+1}", fontsize=9)
+            if row < 6:
+                ax.tick_params(labelbottom=False)
+            if bank == 1:
+                ax.tick_params(labelleft=False)
+    fig.supylabel("Channel spacing error (GHz)", fontsize=12, fontweight="bold")
+    fig.supxlabel("Count", fontsize=12, fontweight="bold")
+    _save_single_figure(fig, output_path)
 
 
 def main() -> None:
@@ -657,11 +466,14 @@ def main() -> None:
         raise SystemExit("No TP2-4 rows after load (check CSV paths and T_MUX filter).")
 
     print(f"Rows: {len(df)}, tiles: {df['Tile_SN'].nunique()}")
-    plot_tp2p4_freq_error(df, results / "tp2p4_freq_error_summary.png")
+    plot_tp2p4_freq_error_tiles(df, results / "tp2p4_tile_vs_freq_error.png")
+    plot_tp2p4_freq_error_distribution(df, results / "tp2p4_distribution_vs_freq_error.png")
 
     center_df, spacing_df = calculate_center_freq_spacing_errors(df, wl_grid)
-    plot_center_freq_error(center_df, results / "tp2p4_center_freq_error_summary.png")
-    plot_channel_spacing_error(center_df, spacing_df, results / "tp2p4_channel_spacing_error_summary.png")
+    plot_center_freq_error_tiles(center_df, results / "tp2p4_tile_vs_center_freq_error.png")
+    plot_center_freq_error_distribution(center_df, results / "tp2p4_distribution_vs_center_freq_error.png")
+    plot_channel_spacing_error_tiles(center_df, spacing_df, results / "tp2p4_tile_vs_channel_spacing_error.png")
+    plot_channel_spacing_error_distribution(spacing_df, results / "tp2p4_distribution_vs_channel_spacing_error.png")
     print("Done.")
 
 
