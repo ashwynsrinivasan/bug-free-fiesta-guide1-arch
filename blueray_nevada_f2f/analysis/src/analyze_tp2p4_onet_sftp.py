@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """
-TP2-4 analysis for CLM data under data/clm_data_onet_sftp.
+TP2-4 / TP2-5 Scan analysis for CLM data under data/clm_data_onet_sftp.
 
 By default applies the same tile-level filters as ips_clm_gen1 (analysis_src/filter.yaml):
 TP2-6 min power → TP2-5 total power @50C → TP2-5 frequency error @50C → TP2-4 spacing error.
-Use --skip-filters to include all TP2-4 tiles.
+Use --skip-filters to include all tiles that load (no filter.yaml cascade).
 
-Writes separate tile-scatter and distribution figures:
-  - tp2p4_tile_vs_*.png / tp2p4_distribution_vs_*.png
+Writes separate tile-scatter and distribution figures per test point when data exists:
+  - tp2p4_* / tp2p5_* (tile_vs_* and distribution_vs_* for freq, center freq, channel spacing).
+  - tp2p5_totalpower_* (TP2-5 mean bank power @50C, gen1 total-power style; blueray split layout).
+  - tp2p6_power_* (TP2-6 per-channel power, gen1 power summary style; blueray split layout).
 Distribution views mirror ips_clm_gen1 TP2-4 right-panel layout: vertical box plots (GHz on y),
 white boxes / black whiskers / red median (gen1 styling), μ̃–σ annotations inside plot above x-axis (tick-aligned), scatter overlay.
 """
@@ -40,6 +42,8 @@ def default_config_dir() -> Path:
 
 TILE_FIGSIZE = (30, 5)
 DIST_FIGSIZE = (10, 5)
+# Two-bank-only distribution panels (center freq, TP2-5 total power)
+DIST_FIGSIZE_TWO_BANK = (5, 5)
 # Dark scatter styling (distribution: drawn under boxplot via zorder)
 TILE_SCATTER_BANK = {
     0: {"facecolor": "#1565c0", "edgecolor": "#0d1117", "linewidths": 0.65},
@@ -49,6 +53,13 @@ TILE_SCATTER_S_FREQ = 55
 TILE_SCATTER_S_CENTER = 120
 TILE_SCATTER_S_SPACING = 50
 DIST_SCATTER_KW = dict(c="#0d1117", s=28, alpha=0.72, linewidths=0)
+# Frequency error plots: fixed span and major ticks every 10 GHz
+FREQ_ERROR_Y_TICKS = np.arange(-50, 51, 10)
+# TP2-6 power distribution: 0–20 mW major ticks (gen1 summary y-limits)
+TP2P6_POWER_Y_TICKS = np.arange(0, 21, 5)
+# TP2-5 total power (fiber): gen1 uses 0–200 mW
+TP2P5_TOTALPOWER_YLIM = (0.0, 200.0)
+TP2P5_TOTALPOWER_Y_TICKS = np.arange(0, 201, 50)
 
 _TILE_SN = re.compile(r"^Y\d{10}$")
 
@@ -88,13 +99,24 @@ def load_tp2p6_onet(tp6_path: Path) -> pd.DataFrame:
     return pd.concat(all_data, ignore_index=True)
 
 
-def load_tp2p5_totalpower_onet(tp5_path: Path, valid_tiles: list[str]) -> pd.DataFrame:
-    """Per gen1 _load_tp2p5_totalpower_data."""
+def load_tp2p6_onet_filtered(tp6_path: Path, valid_tiles: set[str] | None) -> pd.DataFrame:
+    """TP2-6 laser-on rows; optional intersection with valid_tiles."""
+    df = load_tp2p6_onet(tp6_path)
+    if df.empty:
+        return df
+    if valid_tiles is not None:
+        df = df[df["Tile_SN"].isin(valid_tiles)].copy()
+    return df
+
+
+def load_tp2p5_totalpower_onet(tp5_path: Path, valid_tiles: list[str] | None) -> pd.DataFrame:
+    """Per gen1 _load_tp2p5_totalpower_data. If valid_tiles is None, keep all Tile_SN."""
     all_data: list[pd.DataFrame] = []
     for csv_file in sorted(tp5_path.glob("*TP2-5 Scan.csv")):
         try:
             df = pd.read_csv(csv_file)
-            df = df[df["Tile_SN"].isin(valid_tiles)].copy()
+            if valid_tiles is not None:
+                df = df[df["Tile_SN"].isin(valid_tiles)].copy()
             if df.empty:
                 continue
             df = df[(df["T_MUX(C)"] >= 49.9) & (df["T_MUX(C)"] <= 50.1)].copy()
@@ -110,9 +132,23 @@ def load_tp2p5_totalpower_onet(tp5_path: Path, valid_tiles: list[str]) -> pd.Dat
     return pd.concat(all_data, ignore_index=True)
 
 
+def _freq_error_nm_ghz_from_row(row: pd.Series, wl_grid: dict) -> pd.Series:
+    """Target vs measured OSA wavelength → wavelength error (nm) and frequency error (GHz)."""
+    c = 299792458 * 1e9
+    bank = int(row["Bank"])
+    channel = int(row["Channel"])
+    measured_wl = row["OSA_Wave(nm)"]
+    bank_key = f"bank{bank}"
+    grid_num = channel + 1
+    target_wl = wl_grid["banks"][bank_key]["grids"][grid_num]["wavelength_nm"]
+    wl_error_nm = measured_wl - target_wl
+    freq_error_hz = -(c / (target_wl**2)) * wl_error_nm
+    freq_error_ghz = freq_error_hz / 1e9
+    return pd.Series({"Wavelength_Error_nm": wl_error_nm, "Frequency_Error_GHz": freq_error_ghz})
+
+
 def load_tp2p5_freq_onet(tp5_path: Path, wl_grid: dict, valid_tiles: list[str]) -> pd.DataFrame:
     """Per gen1 _load_tp2p5_data (Frequency_Error_GHz)."""
-    c = 299792458 * 1e9
     all_data: list[pd.DataFrame] = []
     for csv_file in sorted(tp5_path.glob("*TP2-5 Scan.csv")):
         try:
@@ -124,19 +160,10 @@ def load_tp2p5_freq_onet(tp5_path: Path, wl_grid: dict, valid_tiles: list[str]) 
             if df.empty:
                 continue
 
-            def calc_freq_error(row):
-                bank = int(row["Bank"])
-                channel = int(row["Channel"])
-                measured_wl = row["OSA_Wave(nm)"]
-                bank_key = f"bank{bank}"
-                grid_num = channel + 1
-                target_wl = wl_grid["banks"][bank_key]["grids"][grid_num]["wavelength_nm"]
-                wl_error = measured_wl - target_wl
-                freq_error_hz = -(c / (target_wl**2)) * wl_error
-                return freq_error_hz / 1e9
-
             df = df.copy()
-            df["Frequency_Error_GHz"] = df.apply(calc_freq_error, axis=1)
+            df["Frequency_Error_GHz"] = df.apply(
+                lambda r: _freq_error_nm_ghz_from_row(r, wl_grid)["Frequency_Error_GHz"], axis=1
+            )
             all_data.append(df)
         except Exception as e:
             print(f"Error reading {csv_file}: {e}", file=sys.stderr)
@@ -149,7 +176,6 @@ def load_tp2p4_scan_data(tp_path: Path, wl_grid: dict, valid_tiles: set[str] | N
     """Load *TP2-4 Scan.csv files; filter T_MUX ~50C; per-channel freq error vs grid.
     If valid_tiles is set, keep only those Tile_SN (after load).
     """
-    c = 299792458 * 1e9
     all_data: list[pd.DataFrame] = []
     csv_files = sorted(tp_path.glob("*TP2-4 Scan.csv"))
 
@@ -166,24 +192,9 @@ def load_tp2p4_scan_data(tp_path: Path, wl_grid: dict, valid_tiles: set[str] | N
             if df.empty:
                 continue
 
-            def calc_freq_error(row):
-                bank = int(row["Bank"])
-                channel = int(row["Channel"])
-                measured_wl = row["OSA_Wave(nm)"]
-                bank_key = f"bank{bank}"
-                grid_num = channel + 1
-                target_wl = wl_grid["banks"][bank_key]["grids"][grid_num]["wavelength_nm"]
-                wl_error_nm = measured_wl - target_wl
-                freq_error_hz = -(c / (target_wl**2)) * wl_error_nm
-                freq_error_ghz = freq_error_hz / 1e9
-                return pd.Series(
-                    {
-                        "Wavelength_Error_nm": wl_error_nm,
-                        "Frequency_Error_GHz": freq_error_ghz,
-                    }
-                )
-
-            df[["Wavelength_Error_nm", "Frequency_Error_GHz"]] = df.apply(calc_freq_error, axis=1)
+            df[["Wavelength_Error_nm", "Frequency_Error_GHz"]] = df.apply(
+                lambda r: _freq_error_nm_ghz_from_row(r, wl_grid), axis=1
+            )
             df = df[
                 [
                     "Tile_SN",
@@ -205,6 +216,44 @@ def load_tp2p4_scan_data(tp_path: Path, wl_grid: dict, valid_tiles: set[str] | N
     out["Version"] = "v1"
     if valid_tiles is not None:
         out = out[out["Tile_SN"].isin(valid_tiles)].copy()
+    return out
+
+
+def load_tp2p5_scan_plot_data(tp_path: Path, wl_grid: dict, valid_tiles: set[str] | None = None) -> pd.DataFrame:
+    """Load *TP2-5 Scan.csv; T_MUX ~50C; same schema as load_tp2p4_scan_data (Tile_SN from CSV)."""
+    all_data: list[pd.DataFrame] = []
+    for csv_file in sorted(tp_path.glob("*TP2-5 Scan.csv")):
+        try:
+            df = pd.read_csv(csv_file)
+            if valid_tiles is not None:
+                df = df[df["Tile_SN"].isin(valid_tiles)].copy()
+            if df.empty:
+                continue
+            df = df[(df["T_MUX(C)"] >= 49.9) & (df["T_MUX(C)"] <= 50.1)].copy()
+            if df.empty:
+                continue
+            df[["Wavelength_Error_nm", "Frequency_Error_GHz"]] = df.apply(
+                lambda r: _freq_error_nm_ghz_from_row(r, wl_grid), axis=1
+            )
+            df = df[
+                [
+                    "Tile_SN",
+                    "Bank",
+                    "Channel",
+                    "T_MUX(C)",
+                    "OSA_Wave(nm)",
+                    "Wavelength_Error_nm",
+                    "Frequency_Error_GHz",
+                ]
+            ].copy()
+            all_data.append(df)
+        except Exception as e:
+            print(f"Error loading {csv_file}: {e}", file=sys.stderr)
+
+    if not all_data:
+        return pd.DataFrame()
+    out = pd.concat(all_data, ignore_index=True)
+    out["Version"] = "v1"
     return out
 
 
@@ -403,8 +452,9 @@ def _vertical_gen1_boxplot_with_scatter(
     use_median_in_annotation: bool = True,
     annotation_pad_frac: float = 0.055,
     annotation_fontsize: int = 7,
+    annotation_unit: str = "GHz",
 ) -> None:
-    """Vertical boxplots (GHz on y); scatter behind boxes; stats inside plot, x-aligned with ticks."""
+    """Vertical boxplots; scatter behind boxes; stats inside plot, x-aligned with ticks."""
     if not box_data:
         ax.set_ylim(ylo, yhi)
         return
@@ -425,6 +475,7 @@ def _vertical_gen1_boxplot_with_scatter(
     )
     _force_white_box_faces(bp)
     _raise_boxplot_zorder(bp, 4.0)
+    u = annotation_unit
     for pos, vals in zip(box_positions, box_data):
         vals = np.asarray(vals, dtype=float)
         if vals.size == 0:
@@ -432,11 +483,11 @@ def _vertical_gen1_boxplot_with_scatter(
         if use_median_in_annotation:
             med = int(round(float(np.median(vals))))
             std = int(round(float(np.std(vals))))
-            fmt = f"μ̃={med}GHz\nσ={std}GHz"
+            fmt = f"μ̃={med}{u}\nσ={std}{u}"
         else:
             mean_v = int(round(float(np.mean(vals))))
             std = int(round(float(np.std(vals))))
-            fmt = f"μ={mean_v}GHz\nσ={std}GHz"
+            fmt = f"μ={mean_v}{u}\nσ={std}{u}"
         ax.text(
             pos,
             y_ann,
@@ -487,6 +538,7 @@ def plot_tp2p4_freq_error_tiles(df: pd.DataFrame, output_path: Path) -> None:
     ax.set_xlabel("Tile_SN", fontsize=13, fontweight="bold")
     ax.set_ylabel("Frequency Error (GHz)", fontsize=13, fontweight="bold")
     ax.set_ylim(-50, 50)
+    ax.set_yticks(FREQ_ERROR_Y_TICKS)
     ax.grid(True, alpha=0.3)
     ax.legend(handles=_bank_legend(), loc="upper right", ncol=2, fontsize=10, frameon=True, framealpha=0.9)
     _save_single_figure(fig, output_path)
@@ -527,6 +579,7 @@ def plot_tp2p4_freq_error_distribution(df: pd.DataFrame, output_path: Path) -> N
     ax.set_xticklabels([f"A-Ch{i}" for i in range(1, 9)] + [f"B-Ch{i}" for i in range(1, 9)], fontsize=9)
     ax.grid(True, alpha=0.3, axis="y")
     ax.set_ylim(ylo, yhi)
+    ax.set_yticks(FREQ_ERROR_Y_TICKS)
     ax.set_xlim(-0.5, 15.5)
     _save_single_figure(fig, output_path)
 
@@ -567,40 +620,41 @@ def plot_center_freq_error_distribution(df: pd.DataFrame, output_path: Path) -> 
     if df.empty:
         print("No data for center frequency error (distribution) plot")
         return
-    sns.set_style("whitegrid")
-    fig, ax = plt.subplots(figsize=DIST_FIGSIZE, layout="constrained")
     ylo, yhi = -50.0, 50.0
-    all_errors = df["Center_Freq_Error_GHz"].values
-    jitter = np.random.uniform(-0.12, 0.12, size=len(all_errors))
-    ax.scatter(jitter, all_errors, **{**DIST_SCATTER_KW, "zorder": 1})
-    bp = ax.boxplot(
-        [all_errors],
-        positions=[0],
-        vert=True,
-        widths=0.3,
-        **_GEN1_BOXPLOT_KW,
+    box_data: list[np.ndarray] = []
+    box_positions: list[int] = []
+    x_labels: list[str] = []
+    for bank in [0, 1]:
+        sub = df[df["Bank"] == bank]["Center_Freq_Error_GHz"].values
+        if sub.size == 0:
+            continue
+        box_data.append(sub)
+        box_positions.append(bank)
+        x_labels.append("Bank A" if bank == 0 else "Bank B")
+    if not box_data:
+        print("No data for center frequency error (distribution) plot")
+        return
+    sns.set_style("whitegrid")
+    fig, ax = plt.subplots(figsize=DIST_FIGSIZE_TWO_BANK, layout="constrained")
+    _vertical_gen1_boxplot_with_scatter(
+        ax,
+        box_data,
+        box_positions,
+        ylo=ylo,
+        yhi=yhi,
+        box_width=0.45,
+        use_median_in_annotation=False,
+        annotation_pad_frac=0.055,
+        annotation_fontsize=8,
     )
-    _force_white_box_faces(bp)
-    _raise_boxplot_zorder(bp, 4.0)
-    overall_mean = int(round(float(np.mean(all_errors))))
-    overall_std = int(round(float(np.std(all_errors))))
-    y_ann = ylo + (yhi - ylo) * 0.055
-    ax.text(
-        0.0,
-        y_ann,
-        f"μ={overall_mean}GHz\nσ={overall_std}GHz",
-        fontsize=9,
-        ha="center",
-        va="bottom",
-        zorder=6,
-        clip_on=False,
-    )
-    ax.set_xticks([0])
-    ax.set_xticklabels(["Both Banks"], fontsize=11, fontweight="bold")
+    ax.set_xticks(box_positions)
+    ax.set_xticklabels(x_labels, fontsize=11, fontweight="bold")
+    ax.set_xlabel("Bank", fontsize=12, fontweight="bold")
     ax.set_ylabel("Center Frequency Error (GHz)", fontsize=12, fontweight="bold")
     ax.grid(True, alpha=0.3, axis="y")
     ax.set_ylim(ylo, yhi)
-    ax.set_xlim(-0.5, 0.5)
+    ax.set_yticks(FREQ_ERROR_Y_TICKS)
+    ax.set_xlim(min(box_positions) - 0.5, max(box_positions) + 0.5)
     _save_single_figure(fig, output_path)
 
 
@@ -675,7 +729,7 @@ def plot_channel_spacing_error_distribution(spacing_df: pd.DataFrame, output_pat
     ax.set_ylabel("Channel Spacing Error (GHz)", fontsize=12, fontweight="bold")
     ax.set_xticks(list(range(14)))
     ax.set_xticklabels(
-        [f"A: Ch{i}→Ch{i+1}" for i in range(1, 8)] + [f"B: Ch{i}→Ch{i+1}" for i in range(1, 8)],
+        [f"Bank A:\nCh{i} --> Ch{i+1}" for i in range(1, 8)] + [f"Bank B:\nCh{i} --> Ch{i+1}" for i in range(1, 8)],
         fontsize=8,
     )
     ax.grid(True, alpha=0.3, axis="y")
@@ -684,8 +738,199 @@ def plot_channel_spacing_error_distribution(spacing_df: pd.DataFrame, output_pat
     _save_single_figure(fig, output_path)
 
 
+def plot_tp2p5_totalpower_tiles(df: pd.DataFrame, output_path: Path) -> None:
+    """Per gen1 _plot_tp2p5_totalpower left panel: mean bank power @50C vs tile (onet: single Version)."""
+    if df.empty:
+        print("No data for TP2-5 total power (tiles) plot")
+        return
+    sns.set_style("whitegrid")
+    fig, ax = plt.subplots(figsize=TILE_FIGSIZE, layout="constrained")
+    bank_markers = {0: "o", 1: "^"}
+    all_tiles = _ordered_tiles(df)
+    tile_offset = 0
+    for version in ["v1", "v2"]:
+        df_version = df[df["Version"] == version]
+        tiles = sorted(df_version["Tile_SN"].unique())
+        for tile_idx, tile in enumerate(tiles):
+            for bank in [0, 1]:
+                df_tile_bank = df_version[(df_version["Tile_SN"] == tile) & (df_version["Bank"] == bank)]
+                if not df_tile_bank.empty:
+                    powers = df_tile_bank["Total_Power_mW"].values
+                    pos = (tile_offset + tile_idx) * 3 + bank
+                    x_scatter = np.random.normal(pos, 0.1, size=len(powers))
+                    st = TILE_SCATTER_BANK[bank]
+                    ax.scatter(
+                        x_scatter,
+                        powers,
+                        s=50,
+                        marker=bank_markers[bank],
+                        alpha=0.88,
+                        **st,
+                    )
+        tile_offset += len(tiles)
+    tile_positions = [(i * 3 + 0.5) for i in range(len(all_tiles))]
+    ax.set_xticks(tile_positions)
+    ax.set_xticklabels(all_tiles, rotation=90, fontsize=7)
+    ax.set_xlabel("Tile_SN", fontsize=13, fontweight="bold")
+    ax.set_ylabel("Total power in fiber (mW)", fontsize=13, fontweight="bold")
+    ylo, yhi = TP2P5_TOTALPOWER_YLIM
+    ax.set_ylim(ylo, yhi)
+    ax.set_yticks(TP2P5_TOTALPOWER_Y_TICKS)
+    ax.grid(True, alpha=0.3)
+    ax.legend(handles=_bank_legend(), loc="upper right", ncol=2, fontsize=10, frameon=True, framealpha=0.9)
+    _save_single_figure(fig, output_path)
+
+
+def plot_tp2p5_totalpower_distribution(df: pd.DataFrame, output_path: Path) -> None:
+    """TP2-5 total power @50C: one vertical box + scatter per bank (blueray styling)."""
+    if df.empty:
+        print("No data for TP2-5 total power (distribution) plot")
+        return
+    ylo, yhi = TP2P5_TOTALPOWER_YLIM
+    box_data: list[np.ndarray] = []
+    box_positions: list[int] = []
+    x_labels: list[str] = []
+    for bank in [0, 1]:
+        sub = df[df["Bank"] == bank]["Total_Power_mW"].values
+        if sub.size == 0:
+            continue
+        box_data.append(sub)
+        box_positions.append(bank)
+        x_labels.append("Bank A" if bank == 0 else "Bank B")
+    if not box_data:
+        print("No data for TP2-5 total power (distribution) plot")
+        return
+    sns.set_style("whitegrid")
+    fig, ax = plt.subplots(figsize=DIST_FIGSIZE_TWO_BANK, layout="constrained")
+    _vertical_gen1_boxplot_with_scatter(
+        ax,
+        box_data,
+        box_positions,
+        ylo=ylo,
+        yhi=yhi,
+        box_width=0.45,
+        use_median_in_annotation=True,
+        annotation_pad_frac=0.055,
+        annotation_fontsize=8,
+        annotation_unit="mW",
+    )
+    ax.set_xticks(box_positions)
+    ax.set_xticklabels(x_labels, fontsize=11, fontweight="bold")
+    ax.set_xlabel("Bank", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Total power in fiber (mW)", fontsize=12, fontweight="bold")
+    ax.grid(True, alpha=0.3, axis="y")
+    ax.set_ylim(ylo, yhi)
+    ax.set_yticks(TP2P5_TOTALPOWER_Y_TICKS)
+    ax.set_xlim(min(box_positions) - 0.5, max(box_positions) + 0.5)
+    _save_single_figure(fig, output_path)
+
+
+def plot_tp2p6_power_tiles(df: pd.DataFrame, output_path: Path) -> None:
+    """Per gen1 _plot_tp2p6_power_combined left panel: per-channel power vs tile."""
+    if df.empty:
+        print("No data for TP2-6 power (tiles) plot")
+        return
+    sns.set_style("whitegrid")
+    fig, ax = plt.subplots(figsize=TILE_FIGSIZE, layout="constrained")
+    bank_markers = {0: "o", 1: "^"}
+    all_tiles = _ordered_tiles(df)
+    tile_offset = 0
+    for version in ["v1", "v2"]:
+        df_version = df[df["Version"] == version]
+        tiles = sorted(df_version["Tile_SN"].unique())
+        for tile_idx, tile in enumerate(tiles):
+            for bank in [0, 1]:
+                df_bank = df_version[df_version["Bank"] == bank]
+                df_tile = df_bank[df_bank["Tile_SN"] == tile]
+                for channel in range(8):
+                    df_channel = df_tile[df_tile["Channel"] == channel]
+                    if not df_channel.empty:
+                        powers = df_channel["Power(mW)"].values
+                        pos = (tile_offset + tile_idx) * 17 + bank * 8 + channel
+                        x_scatter = np.random.normal(pos, 0.15, size=len(powers))
+                        st = TILE_SCATTER_BANK[bank]
+                        ax.scatter(
+                            x_scatter,
+                            powers,
+                            s=TILE_SCATTER_S_FREQ,
+                            marker=bank_markers[bank],
+                            alpha=0.88,
+                            **st,
+                        )
+        tile_offset += len(tiles)
+    tile_positions = [(i * 17 + 7.5) for i in range(len(all_tiles))]
+    ax.set_xticks(tile_positions)
+    ax.set_xticklabels(all_tiles, rotation=90, fontsize=7)
+    ax.set_xlabel("Tile_SN", fontsize=13, fontweight="bold")
+    ax.set_ylabel("Power (mW)", fontsize=13, fontweight="bold")
+    ax.set_ylim(0, 20)
+    ax.set_yticks(TP2P6_POWER_Y_TICKS)
+    ax.grid(True, alpha=0.3)
+    ax.legend(handles=_bank_legend(), loc="upper right", ncol=2, fontsize=10, frameon=True, framealpha=0.9)
+    _save_single_figure(fig, output_path)
+
+
+def plot_tp2p6_power_distribution(df: pd.DataFrame, output_path: Path) -> None:
+    """Per gen1 _plot_tp2p6_power_combined right panel: vertical boxes by bank-channel (blueray style)."""
+    if df.empty:
+        print("No data for TP2-6 power (distribution) plot")
+        return
+    ylo, yhi = 0.0, 20.0
+    box_data: list[np.ndarray] = []
+    box_positions: list[int] = []
+    for bank in [0, 1]:
+        df_bank = df[df["Bank"] == bank]
+        for channel in range(8):
+            sub = df_bank[df_bank["Channel"] == channel]
+            if sub.empty:
+                continue
+            box_data.append(sub["Power(mW)"].values)
+            box_positions.append(bank * 8 + channel)
+    if not box_data:
+        print("No data for TP2-6 power (distribution) plot")
+        return
+    sns.set_style("whitegrid")
+    fig, ax = plt.subplots(figsize=DIST_FIGSIZE, layout="constrained")
+    _vertical_gen1_boxplot_with_scatter(
+        ax,
+        box_data,
+        box_positions,
+        ylo=ylo,
+        yhi=yhi,
+        box_width=0.55,
+        use_median_in_annotation=True,
+        annotation_unit="mW",
+    )
+    ax.set_xlabel("Bank channel", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Power (mW)", fontsize=12, fontweight="bold")
+    ax.set_xticks(list(range(16)))
+    ax.set_xticklabels([f"A-Ch{i}" for i in range(1, 9)] + [f"B-Ch{i}" for i in range(1, 9)], fontsize=9)
+    ax.grid(True, alpha=0.3, axis="y")
+    ax.set_ylim(ylo, yhi)
+    ax.set_yticks(TP2P6_POWER_Y_TICKS)
+    ax.set_xlim(-0.5, 15.5)
+    _save_single_figure(fig, output_path)
+
+
+def _emit_scan_plots(df: pd.DataFrame, wl_grid: dict, results: Path, tp_label: str, file_prefix: str) -> None:
+    """Six figures: per-channel freq, center freq, spacing (tiles + distribution)."""
+    if df.empty:
+        print(f"No data for {tp_label}; skipping figures.")
+        return
+    print(f"{tp_label}: rows {len(df)}, tiles {df['Tile_SN'].nunique()}")
+    plot_tp2p4_freq_error_tiles(df, results / f"{file_prefix}_tile_vs_freq_error.png")
+    plot_tp2p4_freq_error_distribution(df, results / f"{file_prefix}_distribution_vs_freq_error.png")
+    center_df, spacing_df = calculate_center_freq_spacing_errors(df, wl_grid)
+    plot_center_freq_error_tiles(center_df, results / f"{file_prefix}_tile_vs_center_freq_error.png")
+    plot_center_freq_error_distribution(center_df, results / f"{file_prefix}_distribution_vs_center_freq_error.png")
+    plot_channel_spacing_error_tiles(center_df, spacing_df, results / f"{file_prefix}_tile_vs_channel_spacing_error.png")
+    plot_channel_spacing_error_distribution(spacing_df, results / f"{file_prefix}_distribution_vs_channel_spacing_error.png")
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="TP2-4 plots from clm_data_onet_sftp (Scan CSVs).")
+    parser = argparse.ArgumentParser(
+        description="TP2-4/5 Scan, TP2-5 total power, and TP2-6 power plots from clm_data_onet_sftp."
+    )
     parser.add_argument("--data-root", type=Path, default=None, help="Override data root (default: monorepo data/clm_data_onet_sftp)")
     parser.add_argument(
         "--grid",
@@ -702,18 +947,20 @@ def main() -> None:
     parser.add_argument(
         "--skip-filters",
         action="store_true",
-        help="Do not apply ips_clm_gen1 filter.yaml (use all TP2-4 tiles that load successfully).",
+        help="Do not apply ips_clm_gen1 filter.yaml (use all Scan rows at T_MUX ~50C that load).",
     )
     args = parser.parse_args()
 
     data_root = (args.data_root or default_data_root()).resolve()
     tp2p4_path = data_root / "TP2-4"
+    tp2p5_path = data_root / "TP2-5"
+    tp2p6_path = data_root / "TP2-6"
     config_dir = default_config_dir()
     grid_path = (args.grid or (config_dir / "wavelength_grid.yaml")).resolve()
     results = (args.results or (Path(__file__).resolve().parent.parent / "results")).resolve()
 
-    if not tp2p4_path.is_dir():
-        raise SystemExit(f"TP2-4 folder not found: {tp2p4_path}")
+    if not tp2p4_path.is_dir() and not tp2p5_path.is_dir() and not tp2p6_path.is_dir():
+        raise SystemExit(f"No TP2-4, TP2-5, or TP2-6 folder found under {data_root}")
     if not grid_path.is_file():
         raise SystemExit(f"wavelength grid not found: {grid_path}")
 
@@ -722,30 +969,60 @@ def main() -> None:
 
     if args.skip_filters:
         valid_tiles: set[str] | None = None
-        print("Skipping filter.yaml cascade; loading all TP2-4 Scan rows (T_MUX ~50C).")
+        print("Skipping filter.yaml cascade; loading all Scan rows (T_MUX ~50C).")
     else:
         filters = load_filters(config_dir)
         print("Applying ips_clm_gen1 filter.yaml criteria (TP2-6 → TP2-5 → TP2-4 spacing) …")
         valid_tiles = get_valid_tiles_onet(data_root, filters, wl_grid)
         if not valid_tiles:
             raise SystemExit(
-                "No tiles passed all filters. Use --skip-filters to plot unfiltered TP2-4 data, or check TP2-5/6 paths."
+                "No tiles passed all filters. Use --skip-filters to plot unfiltered data, or check TP2-4/5/6 paths."
             )
 
-    print(f"Loading TP2-4 Scan data from {tp2p4_path} …")
-    df = load_tp2p4_scan_data(tp2p4_path, wl_grid, valid_tiles=valid_tiles)
-    if df.empty:
-        raise SystemExit("No TP2-4 rows after load (check CSV paths, T_MUX filter, and tile filter).")
+    if tp2p4_path.is_dir():
+        print(f"Loading TP2-4 Scan data from {tp2p4_path} …")
+        df4 = load_tp2p4_scan_data(tp2p4_path, wl_grid, valid_tiles=valid_tiles)
+        _emit_scan_plots(df4, wl_grid, results, "TP2-4", "tp2p4")
+    else:
+        print(f"No TP2-4 folder at {tp2p4_path}; skipping TP2-4 figures.")
 
-    print(f"Rows: {len(df)}, tiles: {df['Tile_SN'].nunique()}")
-    plot_tp2p4_freq_error_tiles(df, results / "tp2p4_tile_vs_freq_error.png")
-    plot_tp2p4_freq_error_distribution(df, results / "tp2p4_distribution_vs_freq_error.png")
+    if tp2p5_path.is_dir():
+        print(f"Loading TP2-5 Scan data from {tp2p5_path} …")
+        df5 = load_tp2p5_scan_plot_data(tp2p5_path, wl_grid, valid_tiles=valid_tiles)
+        _emit_scan_plots(df5, wl_grid, results, "TP2-5", "tp2p5")
 
-    center_df, spacing_df = calculate_center_freq_spacing_errors(df, wl_grid)
-    plot_center_freq_error_tiles(center_df, results / "tp2p4_tile_vs_center_freq_error.png")
-    plot_center_freq_error_distribution(center_df, results / "tp2p4_distribution_vs_center_freq_error.png")
-    plot_channel_spacing_error_tiles(center_df, spacing_df, results / "tp2p4_tile_vs_channel_spacing_error.png")
-    plot_channel_spacing_error_distribution(spacing_df, results / "tp2p4_distribution_vs_channel_spacing_error.png")
+        print(f"Loading TP2-5 total power @50C from {tp2p5_path} …")
+        vt_list = sorted(valid_tiles) if valid_tiles is not None else None
+        df_tp5_tot = load_tp2p5_totalpower_onet(tp2p5_path, vt_list)
+        if df_tp5_tot.empty:
+            print("No TP2-5 total-power rows after load; skipping tp2p5_totalpower_* figures.")
+        else:
+            df_tp5_tot = df_tp5_tot.copy()
+            df_tp5_tot["Version"] = "v1"
+            print(
+                f"TP2-5 total power: {len(df_tp5_tot)} bank-rows, tiles {df_tp5_tot['Tile_SN'].nunique()}"
+            )
+            plot_tp2p5_totalpower_tiles(df_tp5_tot, results / "tp2p5_totalpower_tile_vs_power.png")
+            plot_tp2p5_totalpower_distribution(
+                df_tp5_tot, results / "tp2p5_totalpower_distribution_vs_power.png"
+            )
+    else:
+        print(f"No TP2-5 folder at {tp2p5_path}; skipping TP2-5 Scan and total-power figures.")
+
+    if tp2p6_path.is_dir():
+        print(f"Loading TP2-6 Test data from {tp2p6_path} …")
+        df6 = load_tp2p6_onet_filtered(tp2p6_path, valid_tiles)
+        if df6.empty:
+            print("No TP2-6 rows after load; skipping tp2p6_power_* figures.")
+        else:
+            df6 = df6.copy()
+            df6["Version"] = "v1"
+            print(f"TP2-6: rows {len(df6)}, tiles {df6['Tile_SN'].nunique()}")
+            plot_tp2p6_power_tiles(df6, results / "tp2p6_power_tile_vs_power.png")
+            plot_tp2p6_power_distribution(df6, results / "tp2p6_power_distribution_vs_power.png")
+    else:
+        print(f"No TP2-6 folder at {tp2p6_path}; skipping TP2-6 power figures.")
+
     print("Done.")
 
 
