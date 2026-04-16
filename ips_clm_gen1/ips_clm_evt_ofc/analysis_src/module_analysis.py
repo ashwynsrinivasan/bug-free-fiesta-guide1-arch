@@ -4071,7 +4071,7 @@ class temperature_aggressors_2:
         subsampled_groups = []
         for (tile_id, bank_type), group in df.groupby(['tile_id', 'bank_type']):
             # Resample to 10-minute intervals, taking the first sample in each interval
-            resampled = group.resample('10T').first()  # '10T' means 10 minutes
+            resampled = group.resample('10min').first()  # 10-minute bins (pandas 2+: use '10min' not '10T')
             # Remove any NaN rows (intervals with no data)
             resampled = resampled.dropna(subset=['time_seconds'])
             subsampled_groups.append(resampled)
@@ -6439,36 +6439,71 @@ class regulators_aggressors:
     This class analyzes regulator performance data from:
     - ips.clm.evt.xlsx (Kenya and Endevour tabs)
     - ips.clm.power.optimization.xlsx (Kenya and Endeavour tabs)
+
+    PMIC temperature is plotted in separate figures
+    ``missionmode_pmic_temp_regevt_*.png`` and ``missionmode_pmic_temp_poweropt_*.png``
+    when ``temp_pmic_C`` (or a recognized alias) is present.
     """
     
-    def __init__(self, base_path):
-        """Initialize regulators aggressors analysis with base path."""
+    def __init__(
+        self,
+        base_path,
+        *,
+        data_path=None,
+        results_path=None,
+        evt_workbook="ips.clm.evt.xlsx",
+        poweropt_workbook="ips.clm.power.optimization.xlsx",
+        quiet_header=False,
+    ):
+        """Initialize regulators aggressors analysis with base path.
+
+        ``data_path`` / ``results_path`` override defaults under ``base_path`` when set
+        (e.g. per-temperature trees under ``data/clm_evt_oct2026``).
+        ``evt_workbook`` / ``poweropt_workbook`` are filenames under ``data_path``, or
+        absolute paths.
+        """
         self.base_path = Path(base_path)
-        self.data_path = self.base_path / "regulators_aggressors"
-        self.results_path = self.base_path / "analysis_results" / "regulators_aggressors"
+        self.data_path = Path(data_path) if data_path is not None else self.base_path / "regulators_aggressors"
+        self.results_path = (
+            Path(results_path)
+            if results_path is not None
+            else self.base_path / "analysis_results" / "regulators_aggressors"
+        )
+        self.evt_workbook = evt_workbook
+        self.poweropt_workbook = poweropt_workbook
         self.results_path.mkdir(parents=True, exist_ok=True)
-        
-        print("="*80)
-        print("Regulators Aggressors Analysis")
-        print("="*80)
-        print(f"Data path: {self.data_path}")
-        print(f"Results path: {self.results_path}\n")
+
+        if not quiet_header:
+            print("=" * 80)
+            print("Regulators Aggressors Analysis")
+            print("=" * 80)
+            print(f"Data path: {self.data_path}")
+            print(f"Results path: {self.results_path}\n")
+
+    def _excel_workbook_path(self, workbook: str) -> Path:
+        p = Path(workbook)
+        return p if p.is_absolute() else self.data_path / p
     
     def analyze_all(self):
         """Run all analysis methods."""
         print("Running all regulators aggressors analysis...\n")
-        
-        # Analyze ips.clm.evt.xlsx
+
+        # Analyze evt workbook (Kenya / Endevour tabs)
         self.analyze_evt_kenya()
         self.analyze_evt_endeavour()
-        
-        # Analyze ips.clm.power.optimization.xlsx
-        self.analyze_poweropt_kenya()
-        self.analyze_poweropt_endeavour()
-        
-        print("\n" + "="*80)
+
+        # Power optimization workbook (optional if missing)
+        pow_path = self._excel_workbook_path(self.poweropt_workbook)
+        if pow_path.is_file():
+            self.analyze_poweropt_kenya()
+            self.analyze_poweropt_endeavour()
+            self._plot_poweropt_supply_pie_kenya_endeavour_pair()
+        else:
+            print(f"Skipping power optimization (missing): {pow_path}\n")
+
+        print("\n" + "=" * 80)
         print("All regulators aggressors analysis complete!")
-        print("="*80)
+        print("=" * 80)
     
     def _parse_list_column(self, value):
         """Parse string representation of list into actual list."""
@@ -6479,11 +6514,24 @@ class regulators_aggressors:
     
     def _prepare_data(self, df, sheet_name):
         """Prepare dataframe with parsed lists and time in hours."""
+        df.columns = df.columns.astype(str).str.strip()
+        # PMIC temperature (canonical column temp_pmic_C for missionmode_pmic_temp_* plots)
+        pmic_src = None
+        if 'temp_pmic_C' in df.columns:
+            pmic_src = 'temp_pmic_C'
+        else:
+            for alt in ('temp_pmic', 'pmic_temp_C', 'PMIC_temp_C', 'PMIC_temp'):
+                if alt in df.columns:
+                    pmic_src = alt
+                    break
+        if pmic_src is not None:
+            df['temp_pmic_C'] = pd.to_numeric(df[pmic_src], errors='coerce')
+
         # Convert timestamp to datetime and calculate hours
         df['timestamp'] = pd.to_datetime(df['timestamp'])
         start_time = df['timestamp'].min()
         df['hours'] = (df['timestamp'] - start_time).dt.total_seconds() / 3600
-        
+
         # Parse list columns
         df['vout_read_list'] = df['vout_read'].apply(self._parse_list_column)
         df['iout_read_list'] = df['iout_read'].apply(self._parse_list_column)
@@ -6503,6 +6551,7 @@ class regulators_aggressors:
             iout_values = row['iout_read_list']
             
             if len(dac_orders) == len(vout_values) == len(iout_values):
+                pmic = row['temp_pmic_C'] if 'temp_pmic_C' in row.index else np.nan
                 for i, dac_order in enumerate(dac_orders):
                     expanded_data.append({
                         'tile_id': row['tile_id'],
@@ -6512,7 +6561,8 @@ class regulators_aggressors:
                         'dac_order': dac_order,
                         'vout_read': vout_values[i],
                         'iout_read': iout_values[i],
-                        'regulator_power': vout_values[i] * iout_values[i]  # Power in Watts (V * A)
+                        'regulator_power': vout_values[i] * iout_values[i],  # Power in Watts (V * A)
+                        'temp_pmic_C': pmic,
                     })
         
         return pd.DataFrame(expanded_data)
@@ -6526,6 +6576,7 @@ class regulators_aggressors:
             wavelength_values = row['wavelength_nm_list']
             
             if len(pic_values) == len(wavelength_values):
+                pmic = row['temp_pmic_C'] if 'temp_pmic_C' in row.index else np.nan
                 for channel_idx in range(len(pic_values)):
                     # Convert wavelength from picometers to nanometers (divide by 1e9)
                     # The column is named wavelength_nm but actually stores values in pm
@@ -6538,11 +6589,39 @@ class regulators_aggressors:
                         'hours': row['hours'],
                         'channel': channel_idx,
                         'pic_mpd_value_uw': pic_values[channel_idx],
-                        'wavelength_nm': wavelength_nm_actual
+                        'wavelength_nm': wavelength_nm_actual,
+                        'temp_pmic_C': pmic,
                     })
         
         return pd.DataFrame(expanded_data)
-    
+
+    def _pmic_hours_curve(self, df: pd.DataFrame) -> pd.DataFrame:
+        """One PMIC sample per time bin (hours); empty if column missing."""
+        if df is None or df.empty or 'temp_pmic_C' not in df.columns:
+            return pd.DataFrame(columns=['hours', 'temp_pmic_C'])
+        pm = df.groupby('hours', as_index=False)['temp_pmic_C'].mean()
+        return pm.dropna(subset=['temp_pmic_C'])
+
+    def _plot_missionmode_pmic_temp(self, df, output_path, title_suffix):
+        """Single figure: mean PMIC temperature vs time (hours) from raw prepared rows."""
+        print(f"\nGenerating PMIC temperature plot: {Path(output_path).name}")
+        pm = self._pmic_hours_curve(df)
+        if pm.empty:
+            print("  Skipping (no temp_pmic_C data).")
+            return
+        fig, ax = plt.subplots(figsize=(12, 5))
+        ax.plot(pm['hours'], pm['temp_pmic_C'], color='#212121', linewidth=1.5, label='PMIC temp')
+        ax.set_xlabel('Time (hours)', fontsize=14)
+        ax.set_ylabel('PMIC temperature (°C)', fontsize=14)
+        ax.set_title(f'{title_suffix}\nPMIC temperature vs time', fontsize=15)
+        ax.grid(True, alpha=0.3)
+        ax.tick_params(labelsize=12)
+        ax.legend(loc='best', fontsize=11)
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        print(f"  ✓ Saved: {output_path.name}")
+
     def _plot_missionmode_freqerror(self, df_expanded, output_path, title_suffix):
         """Plot frequency error for all tiles in mission mode."""
         print(f"\nGenerating mission mode frequency error plot: {output_path.name}")
@@ -6569,6 +6648,8 @@ class regulators_aggressors:
         fig, axes = plt.subplots(4, 4, figsize=(20, 16))
         axes = axes.flatten()
         
+        from matplotlib.lines import Line2D
+
         # Plot each tile
         for tile_idx in range(16):
             ax = axes[tile_idx]
@@ -6599,17 +6680,15 @@ class regulators_aggressors:
             ax.tick_params(labelsize=15)
             ax.grid(True, alpha=0.3)
             ax.set_ylim(-100, 100)
-            
+
             # Add tile label
             ax.text(0.02, 0.98, f'Tile {tile_idx+1}', 
                    transform=ax.transAxes, fontsize=16, 
                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
         
-        # Add legend to first subplot
-        from matplotlib.lines import Line2D
         legend_elements = [
             Line2D([0], [0], color='red', lw=2, label='Set A'),
-            Line2D([0], [0], color='blue', lw=2, label='Set B')
+            Line2D([0], [0], color='blue', lw=2, label='Set B'),
         ]
         axes[0].legend(handles=legend_elements, loc='upper left', fontsize=15)
         
@@ -6629,6 +6708,8 @@ class regulators_aggressors:
         fig, axes = plt.subplots(4, 4, figsize=(20, 16))
         axes = axes.flatten()
         
+        from matplotlib.lines import Line2D
+
         # Plot each tile
         for tile_idx in range(16):
             ax = axes[tile_idx]
@@ -6661,17 +6742,15 @@ class regulators_aggressors:
             ax.tick_params(labelsize=15)
             ax.grid(True, alpha=0.3)
             ax.set_ylim(5, 15)
-            
+
             # Add tile label
             ax.text(0.02, 0.98, f'Tile {tile_idx+1}', 
                    transform=ax.transAxes, fontsize=16, 
                    verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
         
-        # Add legend to first subplot
-        from matplotlib.lines import Line2D
         legend_elements = [
             Line2D([0], [0], color='red', lw=2, label='Set A'),
-            Line2D([0], [0], color='blue', lw=2, label='Set B')
+            Line2D([0], [0], color='blue', lw=2, label='Set B'),
         ]
         axes[0].legend(handles=legend_elements, loc='upper left', fontsize=15)
         
@@ -6748,9 +6827,9 @@ class regulators_aggressors:
         print("ANALYZING ips.clm.evt.xlsx - Kenya")
         print("="*80)
         
-        excel_file = self.data_path / 'ips.clm.evt.xlsx'
+        excel_file = self._excel_workbook_path(self.evt_workbook)
         df = pd.read_excel(excel_file, sheet_name='Kenya')
-        print(f"Loaded data: {df.shape}")
+        print(f"Loaded {excel_file.name}: {df.shape}")
         
         # Prepare data
         df = self._prepare_data(df, 'Kenya')
@@ -6775,6 +6854,11 @@ class regulators_aggressors:
         self._plot_iout_compare(df,
                                self.results_path / 'missionmode_iout_compare_regevt_kenya.png',
                                'RegEvt Kenya')
+        self._plot_missionmode_pmic_temp(
+            df,
+            self.results_path / 'missionmode_pmic_temp_regevt_kenya.png',
+            'RegEvt Kenya',
+        )
         
         print(f"\nKenya analysis complete!")
     
@@ -6784,9 +6868,9 @@ class regulators_aggressors:
         print("ANALYZING ips.clm.evt.xlsx - Endevour")
         print("="*80)
         
-        excel_file = self.data_path / 'ips.clm.evt.xlsx'
+        excel_file = self._excel_workbook_path(self.evt_workbook)
         df = pd.read_excel(excel_file, sheet_name='Endevour')
-        print(f"Loaded data: {df.shape}")
+        print(f"Loaded {excel_file.name}: {df.shape}")
         
         # Prepare data
         df = self._prepare_data(df, 'Endevour')
@@ -6811,6 +6895,11 @@ class regulators_aggressors:
         self._plot_iout_compare(df,
                                self.results_path / 'missionmode_iout_compare_regevt_endeavour.png',
                                'RegEvt Endeavour')
+        self._plot_missionmode_pmic_temp(
+            df,
+            self.results_path / 'missionmode_pmic_temp_regevt_endeavour.png',
+            'RegEvt Endeavour',
+        )
         
         print(f"\nEndevour analysis complete!")
     
@@ -6820,9 +6909,9 @@ class regulators_aggressors:
         print("ANALYZING ips.clm.power.optimization.xlsx - Kenya")
         print("="*80)
         
-        excel_file = self.data_path / 'ips.clm.power.optimization.xlsx'
+        excel_file = self._excel_workbook_path(self.poweropt_workbook)
         df = pd.read_excel(excel_file, sheet_name='Kenya')
-        print(f"Loaded data: {df.shape}")
+        print(f"Loaded {excel_file.name}: {df.shape}")
         
         # Prepare data
         df = self._prepare_data(df, 'Kenya')
@@ -6847,6 +6936,16 @@ class regulators_aggressors:
         self._plot_iout_compare(df,
                                self.results_path / 'missionmode_iout_compare_poweropt_kenya.png',
                                'PowerOpt Kenya')
+        self._plot_missionmode_pmic_temp(
+            df,
+            self.results_path / 'missionmode_pmic_temp_poweropt_kenya.png',
+            'PowerOpt Kenya',
+        )
+        self._plot_poweropt_supply_pie(
+            df_reg,
+            self.results_path / 'missionmode_poweropt_supply_pie_kenya.png',
+            'Power optimization — Kenya',
+        )
         
         print(f"\nKenya analysis complete!")
     
@@ -6856,9 +6955,9 @@ class regulators_aggressors:
         print("ANALYZING ips.clm.power.optimization.xlsx - Endeavour")
         print("="*80)
         
-        excel_file = self.data_path / 'ips.clm.power.optimization.xlsx'
+        excel_file = self._excel_workbook_path(self.poweropt_workbook)
         df = pd.read_excel(excel_file, sheet_name='Endeavour')
-        print(f"Loaded data: {df.shape}")
+        print(f"Loaded {excel_file.name}: {df.shape}")
         
         # Prepare data
         df = self._prepare_data(df, 'Endeavour')
@@ -6883,8 +6982,198 @@ class regulators_aggressors:
         self._plot_iout_compare(df,
                                self.results_path / 'missionmode_iout_compare_poweropt_endeavour.png',
                                'PowerOpt Endeavour')
+        self._plot_missionmode_pmic_temp(
+            df,
+            self.results_path / 'missionmode_pmic_temp_poweropt_endeavour.png',
+            'PowerOpt Endeavour',
+        )
+        self._plot_poweropt_supply_pie(
+            df_reg,
+            self.results_path / 'missionmode_poweropt_supply_pie_endeavour.png',
+            'Power optimization — Endeavour',
+        )
         
         print(f"\nEndeavour analysis complete!")
+    
+    def _dac_supply_bucket(self, dac_order) -> str | None:
+        """Group power-opt regulator rails for supply pie charts."""
+        n = str(dac_order).strip().upper().replace(" ", "_")
+        if n in ("CLM0", "CLM1"):
+            return "laser"
+        if n in ("CLM_PMIC", "CLM_IO"):
+            return "ic"
+        if "TEC" in n:
+            return "thermal"
+        return None
+    
+    def _poweropt_supply_pie_bundle(
+        self,
+        df_expanded: pd.DataFrame,
+        *,
+        t_hours_min: float = 1.5,
+        t_hours_max: float = 2.0,
+    ):
+        """
+        Build pie inputs for power-opt supply split, or None if not plottable.
+
+        Returns dict with keys: sizes, labels, plot_colors, hours_pick, total_w.
+        """
+        if df_expanded is None or df_expanded.empty:
+            return None
+
+        dfx = df_expanded.copy()
+        dfx["_bucket"] = dfx["dac_order"].apply(self._dac_supply_bucket)
+        win = dfx[
+            (dfx["hours"] >= t_hours_min)
+            & (dfx["hours"] <= t_hours_max)
+            & dfx["_bucket"].notna()
+        ]
+        if win.empty:
+            return None
+
+        ts_totals = win.groupby("timestamp", as_index=False)["regulator_power"].sum()
+        idx_min = ts_totals["regulator_power"].idxmin()
+        t_pick = ts_totals.loc[idx_min, "timestamp"]
+        slice_df = win[win["timestamp"] == t_pick]
+        hours_pick = float(slice_df["hours"].iloc[0])
+        total_w = float(slice_df["regulator_power"].sum())
+
+        by_bucket = slice_df.groupby("_bucket", as_index=False)["regulator_power"].sum()
+        order = ["laser", "ic", "thermal"]
+        labels_display = {
+            "laser": "Laser supply",
+            "ic": "IC supply",
+            "thermal": "Thermal management",
+        }
+        colors = {"laser": "#2ecc71", "ic": "#3498db", "thermal": "#e67e22"}
+        sizes = []
+        labels = []
+        plot_colors = []
+        for b in order:
+            row = by_bucket[by_bucket["_bucket"] == b]
+            v = float(row["regulator_power"].sum()) if len(row) else 0.0
+            if v > 0:
+                sizes.append(v)
+                labels.append(labels_display[b])
+                plot_colors.append(colors[b])
+
+        if not sizes or total_w <= 0:
+            return None
+
+        return {
+            "sizes": sizes,
+            "labels": labels,
+            "plot_colors": plot_colors,
+            "hours_pick": hours_pick,
+            "total_w": total_w,
+            "t_hours_min": t_hours_min,
+            "t_hours_max": t_hours_max,
+        }
+
+    def _draw_poweropt_supply_pie_ax(self, ax, bundle: dict, title_suffix: str) -> None:
+        """Draw one supply pie on ``ax`` using output of ``_poweropt_supply_pie_bundle``."""
+        total_w = bundle["total_w"]
+        tmin, tmax = bundle["t_hours_min"], bundle["t_hours_max"]
+        ax.pie(
+            bundle["sizes"],
+            labels=bundle["labels"],
+            colors=bundle["plot_colors"],
+            autopct=lambda pct, tw=total_w: f"{pct:.1f}%\n({pct * tw / 100.0:.2f} W)",
+            startangle=90,
+            counterclock=False,
+            textprops={"fontsize": 10},
+        )
+        ax.set_title(
+            f"{title_suffix}\n@ {bundle['hours_pick']:.3f} h "
+            f"(min total {total_w:.2f} W in {tmin:.1f}–{tmax:.1f} h)",
+            fontsize=12,
+        )
+
+    def _plot_poweropt_supply_pie(
+        self,
+        df_expanded: pd.DataFrame,
+        output_path,
+        title_suffix: str,
+        *,
+        t_hours_min: float = 1.5,
+        t_hours_max: float = 2.0,
+    ) -> None:
+        """
+        Pie chart of module power by supply category at one instant.
+
+        Categories: Laser supply (CLM0+CLM1), IC supply (CLM PMIC + CLM_IO),
+        Thermal management (CLM TEC CNTR). Uses the timestamp in
+        [t_hours_min, t_hours_max] where total regulator power (summed over
+        the module) is minimum.
+        """
+        print(f"\nGenerating power-opt supply pie: {Path(output_path).name}")
+        bundle = self._poweropt_supply_pie_bundle(
+            df_expanded, t_hours_min=t_hours_min, t_hours_max=t_hours_max
+        )
+        if bundle is None:
+            if df_expanded is None or df_expanded.empty:
+                print("  Skipping (no regulator data).")
+            else:
+                print(
+                    f"  Skipping (no usable slice between {t_hours_min} h and {t_hours_max} h)."
+                )
+            return
+
+        fig, ax = plt.subplots(figsize=(7, 7))
+        self._draw_poweropt_supply_pie_ax(ax, bundle, title_suffix)
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches="tight")
+        plt.close()
+        print(
+            f"  ✓ Saved: {Path(output_path).name} "
+            f"(t = {bundle['hours_pick']:.4f} h, total = {bundle['total_w']:.2f} W)"
+        )
+
+    def _plot_poweropt_supply_pie_kenya_endeavour_pair(self) -> None:
+        """Single figure: Kenya pie and Endeavour pie side by side (power optimization)."""
+        out = self.results_path / "missionmode_poweropt_supply_pie_kenya_and_endeavour.png"
+        print(f"\nGenerating paired power-opt supply pies: {out.name}")
+
+        pow_path = self._excel_workbook_path(self.poweropt_workbook)
+        if not pow_path.is_file():
+            print("  Skipping (power optimization workbook missing).")
+            return
+
+        df_k = pd.read_excel(pow_path, sheet_name="Kenya")
+        df_k = self._prepare_data(df_k, "Kenya")
+        df_e = pd.read_excel(pow_path, sheet_name="Endeavour")
+        df_e = self._prepare_data(df_e, "Endeavour")
+
+        b_k = self._poweropt_supply_pie_bundle(self._expand_regulator_data(df_k))
+        b_e = self._poweropt_supply_pie_bundle(self._expand_regulator_data(df_e))
+
+        if b_k is None and b_e is None:
+            print("  Skipping (no usable Kenya or Endeavour slice for pie).")
+            return
+
+        fig, axes = plt.subplots(1, 2, figsize=(14, 7))
+        if b_k is not None:
+            self._draw_poweropt_supply_pie_ax(
+                axes[0], b_k, "Power optimization — Kenya"
+            )
+        else:
+            axes[0].set_visible(False)
+        if b_e is not None:
+            self._draw_poweropt_supply_pie_ax(
+                axes[1], b_e, "Power optimization — Endeavour"
+            )
+        else:
+            axes[1].set_visible(False)
+
+        fig.suptitle(
+            "Supply split: Kenya vs Endeavour (same rules: min total power in 1.5–2.0 h)",
+            fontsize=13,
+            y=1.02,
+        )
+        plt.tight_layout()
+        plt.savefig(out, dpi=300, bbox_inches="tight")
+        plt.close()
+        print(f"  ✓ Saved: {out.name}")
     
     def _plot_iout_compare(self, df, output_path, title_suffix):
         """
@@ -6979,9 +7268,9 @@ class regulators_aggressors:
         ax.set_xlabel('Time (hours)', fontsize=14)
         ax.set_ylabel('Current (mA)', fontsize=14)
         ax.set_title('CLM0 Regulator vs Tiles 0-7 Laser Current', fontsize=16)
-        ax.legend(fontsize=12, loc='best')
         ax.grid(True, alpha=0.3)
         ax.tick_params(labelsize=12)
+        ax.legend(fontsize=12, loc='best')
         
         # Plot 2: CLM1 vs Tiles 8-15
         ax = axes[1]
@@ -6993,9 +7282,9 @@ class regulators_aggressors:
         ax.set_xlabel('Time (hours)', fontsize=14)
         ax.set_ylabel('Current (mA)', fontsize=14)
         ax.set_title('CLM1 Regulator vs Tiles 8-15 Laser Current', fontsize=16)
-        ax.legend(fontsize=12, loc='best')
         ax.grid(True, alpha=0.3)
         ax.tick_params(labelsize=12)
+        ax.legend(fontsize=12, loc='best')
         
         plt.tight_layout()
         plt.savefig(output_path, dpi=300, bbox_inches='tight')

@@ -1,7 +1,15 @@
 """
 CLM Manufacturing Data Analysis Script
 Test Point Analysis for clm_mfg_data_v1 and clm_mfg_data_v2
+
+EVT subset (fixed Tile_SN list, ``evt_tp2p4_*`` / ``evt_tp2p5_*`` outputs):
+  python analyze_test_points.py --evt-tp-only
+
+Uses ``analysis_src/evt_tp_scan_tiles.yaml`` (see ``intersect_with_filter_cascade``).
+Outputs go under ``analysis_results/evt/``.
 """
+
+from __future__ import annotations
 
 import pandas as pd
 import numpy as np
@@ -9,6 +17,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 import glob
+import sys
 
 
 class tpanalysis:
@@ -269,6 +278,139 @@ class tpanalysis:
         print("TP2-5 Total Power Analysis completed!")
         print(f"Plot saved to: {self.results_path / 'tp2p5_totalpower_summary.png'}")
     
+    def _load_evt_tp_scan_config(self):
+        """Return (tile_sn list, intersect_with_filter_cascade bool) from evt_tp_scan_tiles.yaml."""
+        import yaml
+
+        p = self.base_path / "analysis_src" / "evt_tp_scan_tiles.yaml"
+        if not p.is_file():
+            return [], False
+        with open(p, encoding="utf-8") as f:
+            doc = yaml.safe_load(f) or {}
+        raw = doc.get("tile_sn") or doc.get("tiles") or []
+        if not isinstance(raw, list):
+            return [], False
+        tiles = [str(x).strip() for x in raw if x is not None and str(x).strip()]
+        intersect = bool(doc.get("intersect_with_filter_cascade", False))
+        return tiles, intersect
+
+    def _evt_allowlists_per_version(self):
+        """Per-version Tile_SN lists for EVT TP2-4/5 loads (see evt_tp_scan_tiles.yaml)."""
+        evt_tiles, use_cascade = self._load_evt_tp_scan_config()
+        if not evt_tiles:
+            raise FileNotFoundError(
+                f"evt_tp_scan_tiles.yaml missing or empty (key tile_sn): "
+                f"{self.base_path / 'analysis_src' / 'evt_tp_scan_tiles.yaml'}"
+            )
+        evt_set = set(evt_tiles)
+        if use_cascade:
+            vt = self._get_valid_tiles()
+            out = {
+                "v1": [t for t in vt["v1"] if t in evt_set],
+                "v2": [t for t in vt["v2"] if t in evt_set],
+            }
+            print(
+                f"EVT TP scan: intersecting YAML list with filter cascade → "
+                f"v1={len(out['v1'])} tiles, v2={len(out['v2'])} tiles"
+            )
+        else:
+            out = {"v1": list(evt_tiles), "v2": list(evt_tiles)}
+            print(
+                f"EVT TP scan: using YAML allowlist only ({len(evt_tiles)} Tile_SN) for v1 and v2 loads"
+            )
+        return out
+
+    def _evt_results_dir(self) -> Path:
+        """Dedicated folder so EVT plots are easy to find: ``analysis_results/evt/``."""
+        d = self.results_path / "evt"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def evt_tp2p4_analysis(self):
+        """TP2-4 frequency-error summary for EVT tile allowlist → analysis_results/evt/evt_tp2p4_*.png"""
+        print("Starting EVT TP2-4 Analysis (evt_tp_scan_tiles.yaml)…")
+        import yaml
+
+        grid_file = self.base_path / "analysis_src" / "wavelength_grid.yaml"
+        with open(grid_file, "r", encoding="utf-8") as f:
+            wl_grid = yaml.safe_load(f)
+
+        allow = self._evt_allowlists_per_version()
+        all_data = []
+        for version, version_path in [("v1", self.v1_path), ("v2", self.v2_path)]:
+            df = self._load_tp2p4_data(version_path / "TP2-4", wl_grid, allow[version])
+            if not df.empty:
+                df["Version"] = version
+                all_data.append(df)
+                print(f"  EVT TP2-4 {version}: {len(df)} rows, {df['Tile_SN'].nunique()} tiles")
+
+        if all_data:
+            combined_df = pd.concat(all_data, ignore_index=True)
+            out = self._evt_results_dir() / "evt_tp2p4_freq_error_summary.png"
+            self._plot_tp2p4_freq_error(combined_df, out)
+            print(f"EVT TP2-4 Analysis completed → {out}")
+        else:
+            print("EVT TP2-4: no rows loaded (check TP2-4 Scan.csv and allowlist).")
+        print("\n" + "=" * 60 + "\n")
+
+    def evt_tp2p5_analysis(self):
+        """TP2-5 frequency-error summary for EVT allowlist → evt_tp2p5_freq_error_summary.png"""
+        print("Starting EVT TP2-5 Analysis (evt_tp_scan_tiles.yaml)…")
+        import yaml
+
+        grid_file = self.base_path / "analysis_src" / "wavelength_grid.yaml"
+        with open(grid_file, "r", encoding="utf-8") as f:
+            wl_grid = yaml.safe_load(f)
+
+        allow = self._evt_allowlists_per_version()
+        df_v1 = self._load_tp2p5_data(self.v1_path / "TP2-5", wl_grid, allow["v1"])
+        df_v2 = self._load_tp2p5_data(self.v2_path / "TP2-5", wl_grid, allow["v2"])
+        print(f"  EVT TP2-5 v1: {len(df_v1)} rows, v2: {len(df_v2)} rows")
+
+        if df_v1.empty and df_v2.empty:
+            print("EVT TP2-5: no rows loaded (no TP2-5 Scan.csv for these tiles in v1/v2).")
+            print("\n" + "=" * 60 + "\n")
+            return
+
+        df_v1["Version"] = "v1"
+        df_v2["Version"] = "v2"
+        df_combined = pd.concat([df_v1, df_v2], ignore_index=True)
+        out = self._evt_results_dir() / "evt_tp2p5_freq_error_summary.png"
+        self._plot_tp2p5_freq_error(df_combined, out)
+        print(f"EVT TP2-5 Analysis completed → {out}")
+        print("\n" + "=" * 60 + "\n")
+
+    def evt_tp2p5_totalpower_analysis(self):
+        """TP2-5 total-power summary for EVT allowlist → evt_tp2p5_totalpower_summary.png"""
+        print("Starting EVT TP2-5 Total Power Analysis (evt_tp_scan_tiles.yaml)…")
+
+        allow = self._evt_allowlists_per_version()
+        df_v1 = self._load_tp2p5_totalpower_data(self.v1_path / "TP2-5", allow["v1"])
+        df_v2 = self._load_tp2p5_totalpower_data(self.v2_path / "TP2-5", allow["v2"])
+        print(f"  EVT TP2-5 total power v1: {len(df_v1)} rows, v2: {len(df_v2)} rows")
+
+        if df_v1.empty and df_v2.empty:
+            print("EVT TP2-5 total power: no rows loaded.")
+            print("\n" + "=" * 60 + "\n")
+            return
+
+        df_v1["Version"] = "v1"
+        df_v2["Version"] = "v2"
+        df_combined = pd.concat([df_v1, df_v2], ignore_index=True)
+        out = self._evt_results_dir() / "evt_tp2p5_totalpower_summary.png"
+        self._plot_tp2p5_totalpower(df_combined, out)
+        print(f"EVT TP2-5 Total Power Analysis completed → {out}")
+        print("\n" + "=" * 60 + "\n")
+
+    def evt_tp2p4_tp2p5_bundle(self):
+        """Run EVT TP2-4, EVT TP2-5 freq, and EVT TP2-5 total power (evt_* summary PNGs)."""
+        print("=" * 60)
+        print("EVT TP2-4 / TP2-5 bundle (analysis_src/evt_tp_scan_tiles.yaml)")
+        print("=" * 60)
+        self.evt_tp2p4_analysis()
+        self.evt_tp2p5_analysis()
+        self.evt_tp2p5_totalpower_analysis()
+
     def tp2p6_analysis(self):
         """Analysis for TP2-6 test point data."""
         print("Starting TP2-6 Analysis...")
@@ -1601,8 +1743,40 @@ class tpanalysis:
         else:
             return pd.DataFrame()
     
-    def _plot_tp1p2_liv_overlay(self, df, output_path):
-        """Plot the most representative (typical) LIV curve with filtered data."""
+    def _filter_tp1p2_inset_powers(
+        self, df_current: pd.DataFrame, *, iqr_factor: float = 1.5
+    ) -> pd.DataFrame:
+        """Drop ``Power(mW)`` outliers (Tukey fences) for TP1-2 LIV inset violins only.
+
+        Applied per drive current slice (e.g. 120 / 135 / 150 / 165 mA). Does not change
+        the main L–I curve or median curve. If filtering would leave fewer than 5 rows,
+        returns the original slice unchanged.
+        """
+        if df_current.empty or len(df_current) < 8:
+            return df_current
+        p = df_current["Power(mW)"]
+        q1 = float(p.quantile(0.25))
+        q3 = float(p.quantile(0.75))
+        iqr = q3 - q1
+        if iqr <= 0:
+            return df_current
+        lo = q1 - iqr_factor * iqr
+        hi = q3 + iqr_factor * iqr
+        mask = (p >= lo) & (p <= hi)
+        out = df_current.loc[mask]
+        if len(out) < 5:
+            return df_current
+        return out
+    
+    def _plot_tp1p2_liv_overlay(self, df, output_path, *, power_ylim: tuple[float, float] | None = None):
+        """Plot the most representative (typical) LIV curve with filtered data.
+
+        If ``power_ylim`` is ``(y_lo, y_hi)``, fix optical power axis (and insets) to that range.
+        Default ``None`` keeps previous behavior: y from 0 up to max(40, 1.05× data max).
+
+        Inset violins at 120 / 135 / 150 / 165 mA use 1.5×IQR outlier removal on ``Power(mW)``
+        (see ``_filter_tp1p2_inset_powers``) so a few bad points do not stretch the distribution.
+        """
         if df.empty:
             print("No data available for LIV plot")
             return
@@ -1610,6 +1784,11 @@ class tpanalysis:
         # Set up the plot style
         sns.set_style("whitegrid")
         fig, ax = plt.subplots(figsize=(10, 5))
+        fig.patch.set_facecolor("white")
+        # Transparent main axes so inset axes can stack underneath; L–I + grid draw above them.
+        ax.patch.set_alpha(0.0)
+        ax.set_axisbelow(True)
+        ax.set_zorder(10)
         
         # Calculate median LIV curve across all emitters (including zero-power points)
         # For each current value, find the median power
@@ -1643,9 +1822,16 @@ class tpanalysis:
         if best_emitter is not None:
             tile_sn, bank, channel, emitter_data = best_emitter
             
-            # Plot in black
-            ax.plot(emitter_data['Set Laser(mA)'], emitter_data['Power(mW)'],
-                   color='black', linewidth=2.5, linestyle='-', alpha=0.9, zorder=10)
+            # Plot in black (above grid and inset layers)
+            ax.plot(
+                emitter_data["Set Laser(mA)"],
+                emitter_data["Power(mW)"],
+                color="black",
+                linewidth=2.5,
+                linestyle="-",
+                alpha=0.9,
+                zorder=30,
+            )
             
             # Get power values at specific currents and mark them
             currents_of_interest = [120, 135, 150, 165]
@@ -1655,8 +1841,16 @@ class tpanalysis:
                     power_val = power_at_current.iloc[0]['Power(mW)']
                     representative_powers[current] = power_val
                     # Mark the point on the main curve
-                    ax.plot(current, power_val, 'o', color='red', 
-                           markersize=8, zorder=15, markeredgecolor='black', markeredgewidth=1.5)
+                    ax.plot(
+                        current,
+                        power_val,
+                        "o",
+                        color="red",
+                        markersize=8,
+                        zorder=35,
+                        markeredgecolor="black",
+                        markeredgewidth=1.5,
+                    )
             
             print(f"Most representative emitter: Tile {tile_sn}, Bank {bank}, Channel {channel}")
             print(f"  RMS deviation from median: {min_deviation:.3f} mW")
@@ -1669,13 +1863,19 @@ class tpanalysis:
         # Labels (no title)
         ax.set_xlabel('Current (mA)', fontsize=14, fontweight='bold')
         ax.set_ylabel('Optical Power (mW)', fontsize=14, fontweight='bold')
-        ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
+        ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5, zorder=20)
+        for gl in ax.get_xgridlines() + ax.get_ygridlines():
+            gl.set_zorder(20)
         
         # Set axis limits - dynamically based on data or fixed to 170 mA
         max_current = df['Set Laser(mA)'].max() if not df.empty else 170
         max_power = df['Power(mW)'].max() if not df.empty else 40
         ax.set_xlim(0, max(170, max_current))
-        ax.set_ylim(0, max(40, max_power * 1.05))
+        if power_ylim is not None:
+            ax.set_ylim(power_ylim[0], power_ylim[1])
+        else:
+            ax.set_ylim(0, max(40, max_power * 1.05))
+        inset_y_hi = power_ylim[1] if power_ylim is not None else 40.0
         
         # Add inset distribution plots for power at multiple currents
         if len(representative_powers) > 0:
@@ -1696,58 +1896,71 @@ class tpanalysis:
                     
                 representative_power = representative_powers[current]
                 
-                # Get all power values at this current
+                # Get all power values at this current (inset violins only; outlier-filtered)
                 df_current = df[df['Set Laser(mA)'] == float(current)].copy()
+                df_violin = self._filter_tp1p2_inset_powers(df_current)
                 
                 if not df_current.empty and len(df_current) > 5:
                     # Position inset at specified coordinates
                     ax_inset = inset_axes(ax, width="30%", height="60%",
                                          bbox_to_anchor=(pos_x, pos_y, 0.30, 0.60), 
                                          bbox_transform=ax.transAxes, loc='lower left', borderpad=0)
+                    ax_inset.set_zorder(2)
+                    ax_inset.patch.set_alpha(1.0)
                     
                     # Plot violin + box plot for distribution
-                    parts = ax_inset.violinplot([df_current['Power(mW)'].values], positions=[0], 
+                    parts = ax_inset.violinplot([df_violin['Power(mW)'].values], positions=[0], 
                                                widths=0.5, showmeans=False, showmedians=False, showextrema=False)
                     
-                    # Style violin plot
+                    # Style violin plot (low zorder within inset)
                     for pc in parts['bodies']:
                         pc.set_facecolor('#8B0000')
                         pc.set_alpha(0.6)
                         pc.set_edgecolor('black')
                         pc.set_linewidth(1.5)
+                        pc.set_zorder(1)
                     
                     # Overlay box plot
-                    bp = ax_inset.boxplot([df_current['Power(mW)'].values], positions=[0], widths=0.15,
+                    bp = ax_inset.boxplot([df_violin['Power(mW)'].values], positions=[0], widths=0.15,
                                          patch_artist=True, showfliers=False,
                                          boxprops=dict(facecolor='white', color='black', linewidth=1.5),
                                          whiskerprops=dict(color='black', linewidth=1.5),
                                          capprops=dict(color='black', linewidth=1.5),
                                          medianprops=dict(color='red', linewidth=2))
+                    for key in ("boxes", "medians", "whiskers", "caps"):
+                        for artist in bp.get(key, []) or []:
+                            artist.set_zorder(2)
                     
                     # Mark the representative emitter's value
                     ax_inset.plot(0, representative_power, 'o', color='red', 
-                                 markersize=6, zorder=10, markeredgecolor='black', markeredgewidth=1.5)
+                                 markersize=6, zorder=5, markeredgecolor='black', markeredgewidth=1.5)
                     
                     # Style inset
                     ax_inset.set_xlim(-0.6, 0.6)
-                    ax_inset.set_ylim(0, 40)  # Fixed y-axis range
+                    ax_inset.set_ylim(0, inset_y_hi)
                     ax_inset.set_xticks([])
                     ax_inset.set_ylabel(f'{current}mA', fontsize=9, fontweight='bold')
                     ax_inset.tick_params(labelsize=8)
-                    ax_inset.grid(True, alpha=0.3, axis='y')
+                    ax_inset.set_axisbelow(True)
+                    ax_inset.grid(True, alpha=0.3, axis='y', zorder=0)
+                    for gl in ax_inset.get_ygridlines():
+                        gl.set_zorder(0)
                     
-                    # Add annotation showing statistics
-                    median_val = df_current['Power(mW)'].median()
-                    std_val = df_current['Power(mW)'].std()
+                    # Add annotation showing statistics (filtered distribution; matches violin)
+                    median_val = df_violin['Power(mW)'].median()
+                    std_val = df_violin['Power(mW)'].std()
                     ax_inset.text(0.98, 0.05, f'μ={median_val:.1f}mW\nσ={std_val:.1f}mW',
                                 transform=ax_inset.transAxes, fontsize=7,
-                                verticalalignment='bottom', horizontalalignment='right',
+                                verticalalignment='bottom', horizontalalignment='right', zorder=1,
                                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8, edgecolor='black'))
                     
-                    # Add arrow pointing from inset to current point on main curve
+                    # Arrow: above inset body but below main-axis grid and L–I curve
                     con = ConnectionPatch((0, representative_power), (current, representative_power),
                                          coordsA=ax_inset.transData, coordsB=ax.transData,
                                          arrowstyle='->', shrinkA=5, shrinkB=5, linewidth=1.5, color='red', alpha=0.7)
+                    # Below main axes (zorder 10) so grid + L–I stay on top
+                    con.set_zorder(5)
+                    con.set_clip_on(False)
                     fig.add_artist(con)
                     
         
@@ -1756,8 +1969,11 @@ class tpanalysis:
         plt.close()
         print(f"Saved: {output_path}")
     
-    def _plot_tp1p2_liv_simple(self, df, output_path):
-        """Plot a simple LIV curve without insets - just the representative emitter."""
+    def _plot_tp1p2_liv_simple(self, df, output_path, *, power_ylim: tuple[float, float] | None = None):
+        """Plot a simple LIV curve without insets - just the representative emitter.
+
+        Optional ``power_ylim=(y_lo, y_hi)`` fixes the optical power axis; default auto-scales.
+        """
         if df.empty:
             print("No data available for LIV plot")
             return
@@ -1816,321 +2032,96 @@ class tpanalysis:
         max_current = df['Set Laser(mA)'].max() if not df.empty else 170
         max_power = df['Power(mW)'].max() if not df.empty else 40
         ax.set_xlim(0, max(170, max_current))
-        ax.set_ylim(0, max(40, max_power * 1.05))
+        if power_ylim is not None:
+            ax.set_ylim(power_ylim[0], power_ylim[1])
+        else:
+            ax.set_ylim(0, max(40, max_power * 1.05))
         
         plt.tight_layout()
         plt.savefig(output_path, dpi=1200, bbox_inches='tight')
         plt.close()
         print(f"Saved: {output_path}")
 
-    def ofc_plotter(self):
+    def load_ofc_filtered_data(self):
         """
-        OFC plotter for frequency error and power distribution.
-        Creates simplified violin plots for OFC presentation.
-        Uses OFC-specific filters from filter.yaml.
+        Load TP2-5 frequency error and TP2-6 power for valid tiles, applying OFC filters from filter.yaml.
+
+        Returns
+        -------
+        tuple[pd.DataFrame, pd.DataFrame]
+            (df_freq, df_power) after OFC frequency and per-channel power filters.
         """
-        print("Starting OFC Plotter...")
+        print("Loading OFC-filtered MFG frames (TP2-5 / TP2-6)...")
         print("Applying OFC-specific filters from filter.yaml...")
-        
-        # Create ofc folder
-        ofc_path = self.results_path / "ofc"
-        ofc_path.mkdir(exist_ok=True)
-        
-        # Load OFC-specific filters
+
         import yaml
+
         filter_file = self.base_path / "analysis_src" / "filter.yaml"
-        with open(filter_file, 'r') as f:
+        with open(filter_file, "r") as f:
             filter_config = yaml.safe_load(f)
-            ofc_filters = filter_config['ofc_filters']
-        
-        print(f"OFC Filters: Power {ofc_filters['optical_power']['min_mw']}-{ofc_filters['optical_power']['max_mw']}mW, "
-              f"Freq error: {ofc_filters['frequency_error']['min_ghz']} to {ofc_filters['frequency_error']['max_ghz']} GHz")
-        
-        # Get valid tiles that pass all filters
+            ofc_filters = filter_config["ofc_filters"]
+
+        print(
+            f"OFC Filters: Power {ofc_filters['optical_power']['min_mw']}-{ofc_filters['optical_power']['max_mw']}mW, "
+            f"Freq error: {ofc_filters['frequency_error']['min_ghz']} to {ofc_filters['frequency_error']['max_ghz']} GHz"
+        )
+
         valid_tiles = self._get_valid_tiles()
-        
-        # Load wavelength grid for frequency error
+
         grid_file = self.base_path / "analysis_src" / "wavelength_grid.yaml"
-        with open(grid_file, 'r') as f:
+        with open(grid_file, "r") as f:
             wl_grid = yaml.safe_load(f)
-        
-        # Load TP2-5 data for frequency error
+
         print("\nLoading TP2-5 data for frequency error...")
-        df_freq_v1 = self._load_tp2p5_data(self.v1_path / "TP2-5", wl_grid, valid_tiles['v1'])
-        df_freq_v2 = self._load_tp2p5_data(self.v2_path / "TP2-5", wl_grid, valid_tiles['v2'])
-        df_freq_v1['Version'] = 'v1'
-        df_freq_v2['Version'] = 'v2'
+        df_freq_v1 = self._load_tp2p5_data(self.v1_path / "TP2-5", wl_grid, valid_tiles["v1"])
+        df_freq_v2 = self._load_tp2p5_data(self.v2_path / "TP2-5", wl_grid, valid_tiles["v2"])
+        df_freq_v1["Version"] = "v1"
+        df_freq_v2["Version"] = "v2"
         df_freq = pd.concat([df_freq_v1, df_freq_v2], ignore_index=True)
         print(f"Loaded {len(df_freq)} frequency error records (before OFC filtering)")
-        
-        # Apply OFC frequency error filter
-        freq_min = ofc_filters['frequency_error']['min_ghz']
-        freq_max = ofc_filters['frequency_error']['max_ghz']
-        df_freq = df_freq[(df_freq['Frequency_Error_GHz'] >= freq_min) & 
-                          (df_freq['Frequency_Error_GHz'] <= freq_max)]
+
+        freq_min = ofc_filters["frequency_error"]["min_ghz"]
+        freq_max = ofc_filters["frequency_error"]["max_ghz"]
+        df_freq = df_freq[
+            (df_freq["Frequency_Error_GHz"] >= freq_min) & (df_freq["Frequency_Error_GHz"] <= freq_max)
+        ]
         print(f"After OFC freq filter: {len(df_freq)} records (within {freq_min} to {freq_max} GHz)")
-        
-        # Load TP2-6 data for power
+
         print("\nLoading TP2-6 data for power...")
         df_power_v1 = self._load_tp2p6_data(self.v1_path / "TP2-6")
         df_power_v2 = self._load_tp2p6_data(self.v2_path / "TP2-6")
-        df_power_v1 = df_power_v1[df_power_v1['Tile_SN'].isin(valid_tiles['v1'])].copy()
-        df_power_v2 = df_power_v2[df_power_v2['Tile_SN'].isin(valid_tiles['v2'])].copy()
-        df_power_v1['Version'] = 'v1'
-        df_power_v2['Version'] = 'v2'
+        df_power_v1 = df_power_v1[df_power_v1["Tile_SN"].isin(valid_tiles["v1"])].copy()
+        df_power_v2 = df_power_v2[df_power_v2["Tile_SN"].isin(valid_tiles["v2"])].copy()
+        df_power_v1["Version"] = "v1"
+        df_power_v2["Version"] = "v2"
         df_power = pd.concat([df_power_v1, df_power_v2], ignore_index=True)
         print(f"Loaded {len(df_power)} power records (before OFC filtering)")
-        
-        # Apply OFC power filter
-        power_min = ofc_filters['optical_power']['min_mw']
-        power_max = ofc_filters['optical_power']['max_mw']
-        df_power = df_power[(df_power['Power(mW)'] >= power_min) & 
-                            (df_power['Power(mW)'] <= power_max)]
+
+        power_min = ofc_filters["optical_power"]["min_mw"]
+        power_max = ofc_filters["optical_power"]["max_mw"]
+        df_power = df_power[
+            (df_power["Power(mW)"] >= power_min) & (df_power["Power(mW)"] <= power_max)
+        ]
         print(f"After OFC power filter: {len(df_power)} records (within {power_min} to {power_max} mW)")
-        
-        # Load TP2-5 data for total power (average per bank)
-        print("\nLoading TP2-5 data for total power...")
-        df_totalpower_v1 = self._load_tp2p5_totalpower_data(self.v1_path / "TP2-5", valid_tiles['v1'])
-        df_totalpower_v2 = self._load_tp2p5_totalpower_data(self.v2_path / "TP2-5", valid_tiles['v2'])
-        df_totalpower_v1['Version'] = 'v1'
-        df_totalpower_v2['Version'] = 'v2'
-        df_totalpower = pd.concat([df_totalpower_v1, df_totalpower_v2], ignore_index=True)
-        print(f"Loaded {len(df_totalpower)} total power records")
-        
-        # Apply filter for total power (sum across 8 channels)
-        # Total power is 8x individual channel power: 60 to 160 mW (8 channels * 7.5-20 mW range)
-        df_totalpower = df_totalpower[(df_totalpower['Total_Power_mW'] >= 60.0) & 
-                                      (df_totalpower['Total_Power_mW'] <= 160.0)]
-        print(f"After power filter: {len(df_totalpower)} total power records (within 60.0 to 160.0 mW)")
-        
-        # Plot frequency error
-        self._plot_ofc_freq_error(df_freq, ofc_path / "ofc_freq_error.png")
-        
-        # Plot power
-        self._plot_ofc_power(df_power, ofc_path / "ofc_power.png")
-        
-        # Plot total power
-        self._plot_ofc_total_power(df_totalpower, ofc_path / "ofc_total_power.png")
-        
-        print("\nOFC Plotter completed!")
-        print(f"Plots saved to: {ofc_path}")
-    
-    def _plot_ofc_freq_error(self, df, output_path):
-        """Create OFC frequency error plot with box plots and scatter points."""
-        if df.empty:
-            print("No data available for frequency error plot")
-            return
-        
-        # Set up the plot style
-        sns.set_style("whitegrid")
-        fig, ax = plt.subplots(figsize=(6, 4))
-        
-        # Define colors by bank (Red for Set A/Bank 1, Blue for Set B/Bank 0)
-        bank_colors = {1: 'red', 0: 'blue'}  # Bank 1 = Set A (Red), Bank 0 = Set B (Blue)
-        
-        # Prepare data for box plots
-        box_data_positions = []
-        box_data_values = []
-        box_colors = []
-        x_labels = []
-        
-        for channel in range(8):
-            for bank in [1, 0]:  # Set A (Bank 1) first, then Set B (Bank 0)
-                df_channel = df[(df['Bank'] == bank) & (df['Channel'] == channel)]
-                if not df_channel.empty:
-                    errors = df_channel['Frequency_Error_GHz'].values
-                    pos = channel * 2 + (0 if bank == 1 else 1)  # Set A on left, Set B on right
-                    
-                    box_data_positions.append(pos)
-                    box_data_values.append(errors)
-                    box_colors.append(bank_colors[bank])
-                    
-                    # Add scatter plot with small black dots
-                    x_scatter = np.random.normal(pos, 0.08, size=len(errors))
-                    ax.scatter(x_scatter, errors, color='black', 
-                              alpha=0.4, s=8, zorder=1)
-            
-            x_labels.append(f'Ch{channel+1}')
-        
-        # Create box plots
-        bp = ax.boxplot(box_data_values, positions=box_data_positions, widths=0.4,
-                        patch_artist=True, showfliers=False,
-                        boxprops=dict(linewidth=1.5, zorder=2),
-                        whiskerprops=dict(linewidth=1.5, zorder=2),
-                        capprops=dict(linewidth=1.5, zorder=2),
-                        medianprops=dict(linewidth=2, color='black', zorder=3))
-        
-        # Color the boxes by bank
-        for patch, color in zip(bp['boxes'], box_colors):
-            patch.set_facecolor(color)
-            patch.set_alpha(0.6)
-        
-        # Set x-axis labels to channel numbers
-        channel_positions = [i * 2 + 0.5 for i in range(8)]
-        ax.set_xticks(channel_positions)
-        ax.set_xticklabels(x_labels, fontsize=11)
-        
-        # Labels (no title)
-        ax.set_xlabel('Channel', fontsize=12)
-        ax.set_ylabel('Frequency Error (GHz)', fontsize=12)
-        ax.set_ylim(-100, 100)
-        ax.grid(True, alpha=0.3, axis='y')
-        
-        # Create legend
-        from matplotlib.patches import Patch
-        legend_elements = [
-            Patch(facecolor='red', alpha=0.6, edgecolor='black', label='Set A'),
-            Patch(facecolor='blue', alpha=0.6, edgecolor='black', label='Set B')
-        ]
-        ax.legend(handles=legend_elements, loc='upper left', fontsize=12, framealpha=0.9)
-        
-        plt.tight_layout()
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        print(f"Saved: {output_path}")
-    
-    def _plot_ofc_power(self, df, output_path):
-        """Create OFC power plot with box plots and scatter points."""
-        if df.empty:
-            print("No data available for power plot")
-            return
-        
-        # Set up the plot style
-        sns.set_style("whitegrid")
-        fig, ax = plt.subplots(figsize=(6, 4))
-        
-        # Define colors by bank (Red for Set A/Bank 1, Blue for Set B/Bank 0)
-        bank_colors = {1: 'red', 0: 'blue'}  # Bank 1 = Set A (Red), Bank 0 = Set B (Blue)
-        
-        # Prepare data for box plots
-        box_data_positions = []
-        box_data_values = []
-        box_colors = []
-        x_labels = []
-        
-        for channel in range(8):
-            for bank in [1, 0]:  # Set A (Bank 1) first, then Set B (Bank 0)
-                df_channel = df[(df['Bank'] == bank) & (df['Channel'] == channel)]
-                if not df_channel.empty:
-                    powers = df_channel['Power(mW)'].values
-                    pos = channel * 2 + (0 if bank == 1 else 1)  # Set A on left, Set B on right
-                    
-                    box_data_positions.append(pos)
-                    box_data_values.append(powers)
-                    box_colors.append(bank_colors[bank])
-                    
-                    # Add scatter plot with small black dots
-                    x_scatter = np.random.normal(pos, 0.08, size=len(powers))
-                    ax.scatter(x_scatter, powers, color='black', 
-                              alpha=0.4, s=8, zorder=1)
-            
-            x_labels.append(f'Ch{channel+1}')
-        
-        # Create box plots
-        bp = ax.boxplot(box_data_values, positions=box_data_positions, widths=0.4,
-                        patch_artist=True, showfliers=False,
-                        boxprops=dict(linewidth=1.5, zorder=2),
-                        whiskerprops=dict(linewidth=1.5, zorder=2),
-                        capprops=dict(linewidth=1.5, zorder=2),
-                        medianprops=dict(linewidth=2, color='black', zorder=3))
-        
-        # Color the boxes by bank
-        for patch, color in zip(bp['boxes'], box_colors):
-            patch.set_facecolor(color)
-            patch.set_alpha(0.6)
-        
-        # Set x-axis labels to channel numbers
-        channel_positions = [i * 2 + 0.5 for i in range(8)]
-        ax.set_xticks(channel_positions)
-        ax.set_xticklabels(x_labels, fontsize=11)
-        
-        # Labels (no title)
-        ax.set_xlabel('Channel', fontsize=12)
-        ax.set_ylabel('Power in fiber (mW)', fontsize=12)
-        ax.set_ylim(0, 20)
-        ax.grid(True, alpha=0.3, axis='y')
-        
-        # Create legend
-        from matplotlib.patches import Patch
-        legend_elements = [
-            Patch(facecolor='red', alpha=0.6, edgecolor='black', label='Set A'),
-            Patch(facecolor='blue', alpha=0.6, edgecolor='black', label='Set B')
-        ]
-        ax.legend(handles=legend_elements, loc='upper left', fontsize=12, framealpha=0.9)
-        
-        plt.tight_layout()
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        print(f"Saved: {output_path}")
-    
-    def _plot_ofc_total_power(self, df, output_path):
-        """Create OFC total power plot with box plots and scatter points (per bank)."""
-        if df.empty:
-            print("No data available for total power plot")
-            return
-        
-        # Set up the plot style
-        sns.set_style("whitegrid")
-        fig, ax = plt.subplots(figsize=(2, 4))
-        
-        # Define colors by bank (Red for Set A/Bank 1, Blue for Set B/Bank 0)
-        bank_colors = {1: 'red', 0: 'blue'}  # Bank 1 = Set A (Red), Bank 0 = Set B (Blue)
-        
-        # Prepare data for box plots
-        box_data_positions = []
-        box_data_values = []
-        box_colors = []
-        
-        for bank in [1, 0]:  # Set A (Bank 1) first, then Set B (Bank 0)
-            df_bank = df[df['Bank'] == bank]
-            if not df_bank.empty:
-                powers = df_bank['Total_Power_mW'].values
-                pos = 0 if bank == 1 else 1  # Set A on left (0), Set B on right (1)
-                
-                box_data_positions.append(pos)
-                box_data_values.append(powers)
-                box_colors.append(bank_colors[bank])
-                
-                # Add scatter plot with small black dots
-                x_scatter = np.random.normal(pos, 0.08, size=len(powers))
-                ax.scatter(x_scatter, powers, color='black', 
-                          alpha=0.4, s=8, zorder=1)
-        
-        # Create box plots
-        bp = ax.boxplot(box_data_values, positions=box_data_positions, widths=0.4,
-                        patch_artist=True, showfliers=False,
-                        boxprops=dict(linewidth=1.5, zorder=2),
-                        whiskerprops=dict(linewidth=1.5, zorder=2),
-                        capprops=dict(linewidth=1.5, zorder=2),
-                        medianprops=dict(linewidth=2, color='black', zorder=3))
-        
-        # Color the boxes by bank
-        for patch, color in zip(bp['boxes'], box_colors):
-            patch.set_facecolor(color)
-            patch.set_alpha(0.6)
-        
-        # Set x-axis - hide labels, just show the two banks together
-        ax.set_xticks([0.5])
-        ax.set_xticklabels([''], fontsize=11)
-        ax.set_xlim(-0.5, 1.5)
-        
-        # Labels (no title, no x-axis label)
-        ax.set_ylabel('Total Power in fiber (mW)', fontsize=12)
-        ax.set_ylim(0, 200)
-        ax.grid(True, alpha=0.3, axis='y')
-        
-        # Create legend
-        from matplotlib.patches import Patch
-        legend_elements = [
-            Patch(facecolor='red', alpha=0.6, edgecolor='black', label='Set A'),
-            Patch(facecolor='blue', alpha=0.6, edgecolor='black', label='Set B')
-        ]
-        ax.legend(handles=legend_elements, loc='upper left', fontsize=12, framealpha=0.9)
-        
-        plt.tight_layout()
-        plt.savefig(output_path, dpi=300, bbox_inches='tight')
-        plt.close()
-        print(f"Saved: {output_path}")
+
+        return df_freq, df_power
+
+    def ofc_plotter(self):
+        """
+        Delegates to blueray_nevada_f2f MFG OFC plotter; figures go to
+        blueray_nevada_f2f/analysis/results/ofc/.
+        """
+        guide1 = Path(__file__).resolve().parents[3]
+        br_src = guide1 / "blueray_nevada_f2f" / "analysis" / "src"
+        if not br_src.is_dir():
+            raise FileNotFoundError(f"blueray_nevada_f2f analysis src not found: {br_src}")
+        if str(br_src) not in sys.path:
+            sys.path.insert(0, str(br_src))
+
+        from mfg_ofc_plotter import ofc_plotter as run_mfg_ofc
+
+        print("Starting OFC Plotter (outputs under blueray_nevada_f2f/analysis/results/ofc/)...")
+        run_mfg_ofc(mfg_base_path=self.base_path.resolve())
     
     def plot_osa_spectrum(self):
         """
@@ -2303,29 +2294,34 @@ class tpanalysis:
 
 
 if __name__ == "__main__":
-    # Example usage
     analyzer = tpanalysis()
+
+    if len(sys.argv) > 1 and sys.argv[1] in ("--evt-tp-only", "--evt-tp"):
+        analyzer.evt_tp2p4_tp2p5_bundle()
+        raise SystemExit(0)
+
     print("=" * 60)
     print("CLM Manufacturing Data Test Point Analysis")
     print("Available test points: TP1-1 through TP4-3")
+    print("Tip: python analyze_test_points.py --evt-tp-only  → EVT tile allowlist (evt_tp2p4_*.png, …)")
     print("=" * 60)
-    
+
     # Run TP1-2 LIV analysis
     analyzer.tp1p2_analysis()
-    
+
     # Run TP2-4 analysis
     analyzer.tp2p4_analysis()
-    
+
     # Run TP2-5 analysis
     analyzer.tp2p5_analysis()
-    
+
     # Run TP2-5 Total Power analysis
     analyzer.tp2p5_totalpower_analysis()
-    
+
     print("\n" + "=" * 60 + "\n")
-    
+
     # Run TP2-6 analysis
     analyzer.tp2p6_analysis()
-    
+
     # Run center frequency and channel spacing analysis
     analyzer.center_freq_spacing_analysis()
