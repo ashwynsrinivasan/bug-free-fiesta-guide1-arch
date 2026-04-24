@@ -11,8 +11,8 @@ By default applies the same ``filter.yaml`` cascade as ``analyze_tp2p4_onet_sftp
 Use ``--skip-filters`` to include every *LIV.csv row that loads.
 
 Writes:
-  ``blueray_nevada_f2f/analysis/results/LIV/tp1p2_liv_summary_gen1_lm_gen2_onet.png``
-  ``blueray_nevada_f2f/analysis/results/LIV/tp1p2_liv_gen1_lm_gen2_onet.png`` (simple overlay, no insets)
+  ``blueray_nevada_rfp/nevada_l_tile/results/LIV/tp1p2_liv_summary_gen1_lm_gen2_onet.png``
+  ``blueray_nevada_rfp/nevada_l_tile/results/LIV/tp1p2_liv_gen1_lm_gen2_onet.png`` (simple overlay, no insets)
 
 Optical power y-axis is fixed to **0–40 mW** (main panel and insets).
 Inset violins at 120 / 135 / 150 / 165 mA use **1.5×IQR** outlier filtering on
@@ -95,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
         "--results",
         type=Path,
         default=None,
-        help="Output root (default: blueray_nevada_f2f/analysis/results)",
+        help="Output root (default: blueray_nevada_rfp/nevada_l_tile/results)",
     )
     parser.add_argument(
         "--skip-filters",

@@ -278,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
         "--results",
         type=Path,
         default=None,
-        help="Output directory (default: blueray_nevada_f2f/analysis/results/correlation)",
+        help="Output directory (default: blueray_nevada_rfp/nevada_l_tile/results/correlation)",
     )
     parser.add_argument("--skip-filters", action="store_true", help="Skip filter.yaml tile cascade (TP2-based).")
     args = parser.parse_args(argv)

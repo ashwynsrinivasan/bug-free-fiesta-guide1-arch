@@ -13,7 +13,7 @@ If **0–1 h** lacks usable inlet samples, it is filled by **repeating** the mea
 
 Use ``--tile-id N`` for one module or ``--all-tiles`` for every ``tile_id`` that has data in any
 window. Writes ``evt_tile_<id>_freq_error.png`` and ``evt_tile_<id>_optical_power.png``
-under ``blueray_nevada_f2f/analysis/results/evt`` (default ``--output-dir``).
+under ``blueray_nevada_rfp/nevada_l_tile/results/evt`` (default ``--output-dir``).
 
 Data defaults match ``module_analysis.temperature_aggressors_2`` (wavemeter + temperature logs
 under ``ips_clm_gen1/ips_clm_evt_ofc/temperature_aggressors``). Power panel uses **mW**
@@ -110,7 +110,7 @@ def default_temperature_aggressors_dir(evt_ofc_root: Path) -> Path:
 
 def default_output_dir() -> Path:
     """Blueray EVT OFC tile PNGs (broken axis: full mission windows, see module doc)."""
-    return _guide1_root() / "blueray_nevada_f2f" / "analysis" / "results" / "evt"
+    return _guide1_root() / "blueray_nevada_rfp" / "nevada_l_tile" / "results" / "evt"
 
 
 def load_wavemeter_csv(wavemeter_csv: Path) -> pd.DataFrame | None:

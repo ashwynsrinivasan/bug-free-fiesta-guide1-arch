@@ -16,7 +16,7 @@ To plot the **module fiber 1–32** axis for MFG tiles, add ``clm_mfg_data/analy
 mapping each ``Tile_SN`` to module slot ``1..16`` (see ``tile_module_slot.example.yaml``). Without coverage,
 plots fall back to **16 DWDM lanes** (F01–F16) so every CSV row maps to one x position.
 
-Output: blueray_nevada_f2f/analysis/results/ofc/module_distribution_vs_*.png
+Output: blueray_nevada_rfp/nevada_l_tile/results/ofc/module_distribution_vs_*.png
 
 Styling matches ``analyze_tp2p4_onet_sftp`` distribution panels: grey violin, white gen1 box,
 red median, μ̃/σ annotations, ``Bank channel`` + A-Ch1–8 / B-Ch1–8 (16-lane mode), figure (10, 5).

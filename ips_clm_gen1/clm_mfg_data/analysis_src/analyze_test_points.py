@@ -2108,19 +2108,19 @@ class tpanalysis:
 
     def ofc_plotter(self):
         """
-        Delegates to blueray_nevada_f2f MFG OFC plotter; figures go to
-        blueray_nevada_f2f/analysis/results/ofc/.
+        Delegates to blueray_nevada_rfp MFG OFC plotter; figures go to
+        blueray_nevada_rfp/nevada_l_tile/results/ofc/.
         """
         guide1 = Path(__file__).resolve().parents[3]
-        br_src = guide1 / "blueray_nevada_f2f" / "analysis" / "src"
+        br_src = guide1 / "blueray_nevada_rfp" / "nevada_l_tile" / "src"
         if not br_src.is_dir():
-            raise FileNotFoundError(f"blueray_nevada_f2f analysis src not found: {br_src}")
+            raise FileNotFoundError(f"blueray_nevada_rfp analysis src not found: {br_src}")
         if str(br_src) not in sys.path:
             sys.path.insert(0, str(br_src))
 
         from mfg_ofc_plotter import ofc_plotter as run_mfg_ofc
 
-        print("Starting OFC Plotter (outputs under blueray_nevada_f2f/analysis/results/ofc/)...")
+        print("Starting OFC Plotter (outputs under blueray_nevada_rfp/nevada_l_tile/results/ofc/)...")
         run_mfg_ofc(mfg_base_path=self.base_path.resolve())
     
     def plot_osa_spectrum(self):

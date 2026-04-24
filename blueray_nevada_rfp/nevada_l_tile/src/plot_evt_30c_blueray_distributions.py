@@ -5,7 +5,7 @@ EVT OFC 30 °C sheet → Blueray-style violin + gen1 white box distributions.
 Reads ``ips_clm_gen1/ips_clm_evt_ofc/temperature_aggressors/ofc_data.xlsx`` (tab 30C)
 with the same parsing as ``module_analysis.temperature_aggressors_2.analyze_30C_*``.
 
-Output: ``blueray_nevada_f2f/analysis/results/evt_*.png`` (same directory as other Blueray EVT figures).
+Output: ``blueray_nevada_rfp/nevada_l_tile/results/evt_*.png`` (same directory as other Blueray EVT figures).
 
 Tiles are included only if **minimum** last-cycle MPD channel power is **≥ 12 mW** (see ``evt_plot_filters``).
 
@@ -53,7 +53,7 @@ def default_excel_path() -> Path:
 
 
 def default_output_dir() -> Path:
-    """``blueray_nevada_f2f/analysis/results`` (with ``evt_*`` filenames)."""
+    """``blueray_nevada_rfp/nevada_l_tile/results`` (with ``evt_*`` filenames)."""
     return (Path(__file__).resolve().parent.parent / "results").resolve()
 
 

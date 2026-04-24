@@ -64,7 +64,7 @@ def default_config_dir() -> Path:
 
 
 def default_results_dir() -> Path:
-    """``blueray_nevada_f2f/analysis/results`` (same tree as ``tp2p4_*.png``)."""
+    """``blueray_nevada_rfp/nevada_l_tile/results`` (same tree as ``tp2p4_*.png``)."""
     return Path(__file__).resolve().parent.parent / "results"
 
 

@@ -52,7 +52,7 @@ from tp2p4_osa_power_reconcile import reconcile_tp2p4_dataframe, tile_sn_from_tp
 # Monorepo: .../friendly-system-lmi/data/clm_data_onet_sftp
 def default_data_root() -> Path:
     here = Path(__file__).resolve()
-    # .../blueray_nevada_f2f/analysis/src/thisfile.py -> parents[5] = repo root
+    # .../blueray_nevada_rfp/nevada_l_tile/src/thisfile.py -> parents[5] = repo root
     repo_root = here.parents[5]
     return (repo_root / "data" / "clm_data_onet_sftp").resolve()
 
@@ -1353,7 +1353,7 @@ def main(argv: list[str] | None = None) -> None:
         "--results",
         type=Path,
         default=None,
-        help="Output directory (default: blueray_nevada_f2f/analysis/results)",
+        help="Output directory (default: blueray_nevada_rfp/nevada_l_tile/results)",
     )
     parser.add_argument(
         "--skip-filters",

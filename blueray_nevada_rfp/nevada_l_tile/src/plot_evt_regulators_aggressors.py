@@ -11,7 +11,7 @@ Oct2026 only (no gen1 mirror); Nevada tile PNGs still run after Oct2026 unless `
 
 **Gen1 mirror**  
 Reads ``ips_clm_evt_ofc/regulators_aggressors/*.xlsx`` →
-``blueray_nevada_f2f/analysis/results/evt/regulators_aggressors/``.
+``blueray_nevada_rfp/nevada_l_tile/results/evt/regulators_aggressors/``.
 
 **Oct 2026 batch** (``--oct2026-root``)  
 - For each immediate subdirectory of ``data/clm_evt_oct2026`` that contains
@@ -43,22 +43,22 @@ def default_evt_ofc_root() -> Path:
 
 
 def default_results_dir() -> Path:
-    return _arch_root() / "blueray_nevada_f2f" / "analysis" / "results" / "evt" / "regulators_aggressors"
+    return _arch_root() / "blueray_nevada_rfp" / "nevada_l_tile" / "results" / "evt" / "regulators_aggressors"
 
 
 def default_evt_plot_dir() -> Path:
     """Blueray ``evt_tile_*`` PNGs (Nevada OFC broken-axis plots)."""
-    return _arch_root() / "blueray_nevada_f2f" / "analysis" / "results" / "evt"
+    return _arch_root() / "blueray_nevada_rfp" / "nevada_l_tile" / "results" / "evt"
 
 
 def nevada_prep_evt_plot_dir() -> Path:
     """Optional second sink for the same tile PNGs (Nevada prep tree)."""
-    return _arch_root() / "blueray_nevada_f2f" / "nevada_prep" / "analysis" / "results"
+    return _arch_root() / "blueray_nevada_rfp" / "nevada_prep" / "analysis" / "results"
 
 
 def run_nevada_ofc_tile_timeseries(output_dir: Path) -> int:
     """Run ``plot_nevada_ofc_tile_timeseries.py --all-tiles`` into ``output_dir``."""
-    script = _arch_root() / "blueray_nevada_f2f" / "analysis" / "src" / "plot_nevada_ofc_tile_timeseries.py"
+    script = _arch_root() / "blueray_nevada_rfp" / "nevada_l_tile" / "src" / "plot_nevada_ofc_tile_timeseries.py"
     if not script.is_file():
         print(f"Skipping Nevada OFC plots (missing script): {script}", file=sys.stderr)
         return 0
@@ -79,7 +79,7 @@ def run_nevada_ofc_all_default_outputs() -> int:
     rc = run_nevada_ofc_tile_timeseries(primary)
     if rc != 0:
         return rc
-    nevada_prep_root = _arch_root() / "blueray_nevada_f2f" / "nevada_prep"
+    nevada_prep_root = _arch_root() / "blueray_nevada_rfp" / "nevada_prep"
     if nevada_prep_root.is_dir():
         rc2 = run_nevada_ofc_tile_timeseries(nevada_prep_evt_plot_dir())
         if rc2 != 0:
@@ -237,7 +237,7 @@ def run_oct2026(oct_root: Path, results_parent: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="Regulators aggressors → blueray_nevada_f2f/analysis/results/evt")
+    p = argparse.ArgumentParser(description="Regulators aggressors → blueray_nevada_rfp/nevada_l_tile/results/evt")
     p.add_argument(
         "--oct2026",
         action="store_true",
@@ -269,7 +269,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.oct2026:
         oct_root = (args.oct2026_root or default_oct2026_root()).resolve()
-        results_parent = _arch_root() / "blueray_nevada_f2f" / "analysis" / "results" / "evt" / "regulators_aggressors_oct2026"
+        results_parent = _arch_root() / "blueray_nevada_rfp" / "nevada_l_tile" / "results" / "evt" / "regulators_aggressors_oct2026"
         rc = run_oct2026(oct_root, results_parent)
         if rc != 0:
             return rc
@@ -290,8 +290,8 @@ def main(argv: list[str] | None = None) -> int:
             if runs:
                 results_parent = (
                     _arch_root()
-                    / "blueray_nevada_f2f"
-                    / "analysis"
+                    / "blueray_nevada_rfp"
+                    / "nevada_l_tile"
                     / "results"
                     / "evt"
                     / "regulators_aggressors_oct2026"
