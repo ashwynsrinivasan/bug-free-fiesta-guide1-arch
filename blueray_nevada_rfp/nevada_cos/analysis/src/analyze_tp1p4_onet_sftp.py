@@ -449,7 +449,98 @@ def plot_tp1p4_optical_power_combined_banks(df: pd.DataFrame, output_path: Path)
     )
 
 
-FREQ_UNIFORMITY_Y_TICKS  = np.arange(0, 101, 20)  # 0–100 GHz, 20 GHz steps
+FREQ_UNIFORMITY_Y_TICKS   = np.arange(0, 101, 20)   # 0–100 GHz, 20 GHz steps
+CHANNEL_SPACING_Y_TICKS   = np.arange(-35, 21, 5)    # GHz  (-35 … +20)
+
+_SPACING_LABELS = (
+    [f"A{i}-A{i+1}" for i in range(1, 8)] +
+    [f"B{i}-B{i+1}" for i in range(1, 8)]
+)
+
+
+def compute_channel_spacing_errors(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute adjacent-channel frequency spacing errors within each bank per tile.
+
+    spacing_error(bank, ch_i → ch_i+1) = freq_error(ch_i+1) − freq_error(ch_i)
+
+    Returns DataFrame with columns: Tile_SN, Position (0–13), Spacing_Error_GHz.
+    Position 0–6 = bank-A pairs (A1-A2 … A7-A8), 7–13 = bank-B pairs.
+    """
+    pivot = (
+        df.groupby(["Tile_SN", "Bank", "Channel"])["Frequency_Error_GHz"]
+        .mean()
+        .reset_index()
+    )
+    rows: list[dict] = []
+    for (tile_sn, bank), g in pivot.groupby(["Tile_SN", "Bank"]):
+        fe = g.set_index("Channel")["Frequency_Error_GHz"].sort_index()
+        for ch in range(7):
+            if ch in fe.index and ch + 1 in fe.index:
+                rows.append({
+                    "Tile_SN": tile_sn,
+                    "Position": bank * 7 + ch,
+                    "Spacing_Error_GHz": float(fe[ch + 1]) - float(fe[ch]),
+                })
+    return pd.DataFrame(rows)
+
+
+def plot_tp1p4_channel_spacing_distribution(df: pd.DataFrame, output_path: Path) -> None:
+    """14-column adjacent-channel spacing error distribution (A1-A2 … B7-B8)."""
+    if df.empty:
+        print("No data for channel spacing error plot")
+        return
+    sp = compute_channel_spacing_errors(df)
+    if sp.empty:
+        return
+    box_data: list[np.ndarray] = []
+    box_positions: list[int] = []
+    for pos in range(14):
+        vals = sp[sp["Position"] == pos]["Spacing_Error_GHz"].values
+        if vals.size == 0:
+            continue
+        box_data.append(vals)
+        box_positions.append(pos)
+    if not box_data:
+        return
+    sns.set_style("whitegrid")
+    fig, ax = plt.subplots(figsize=DIST_FIGSIZE, layout="constrained")
+    _vertical_gen1_boxplot_with_violin(
+        ax, box_data, box_positions,
+        ylo=-35.0, yhi=20.0,
+        use_median_in_annotation=True,
+        annotation_unit="GHz",
+        annotation_decimals=1,
+    )
+    ax.set_xlabel("Adjacent channel pair", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Channel Spacing Error (GHz)", fontsize=12, fontweight="bold")
+    ax.set_xticks(list(range(14)))
+    ax.set_xticklabels(_SPACING_LABELS, fontsize=9)
+    ax.grid(True, alpha=0.3, axis="y")
+    ax.set_ylim(-35.0, 20.0)
+    ax.set_yticks(CHANNEL_SPACING_Y_TICKS)
+    ax.set_xlim(-0.5, 13.5)
+    _save_figure(fig, output_path)
+
+
+def plot_tp1p4_channel_spacing_combined_banks(df: pd.DataFrame, output_path: Path) -> None:
+    """All 14 adjacent-pair spacing errors pooled into one box+violin."""
+    if df.empty:
+        print("No data for channel spacing combined banks plot")
+        return
+    sp = compute_channel_spacing_errors(df)
+    if sp.empty:
+        return
+    _plot_combined_banks_distribution(
+        output_path,
+        sp["Spacing_Error_GHz"].values,
+        ylo=-35.0,
+        yhi=20.0,
+        yticks=CHANNEL_SPACING_Y_TICKS,
+        ylabel="Channel Spacing Error (GHz)",
+        use_mean_for_annotation=False,
+        annotation_unit="GHz",
+        empty_msg="No data for channel spacing combined banks plot",
+    )
 
 
 def _tile_uniformity(df: pd.DataFrame, col: str) -> np.ndarray:
@@ -586,6 +677,14 @@ def main() -> int:
         df, results_dir / "tp1p4_distribution_frequency_error_uniformity.png"
     )
 
+    # Channel spacing error — liv
+    plot_tp1p4_channel_spacing_distribution(
+        df, results_dir / "tp1p4_distribution_channel_spacing_error.png"
+    )
+    plot_tp1p4_channel_spacing_combined_banks(
+        df, results_dir / "tp1p4_distribution_channel_spacing_error_combined_banks.png"
+    )
+
     # Optimized optical power (same data, written to opt_dir for completeness)
     plot_tp1p4_optical_power_distribution(
         df, opt_dir / "tp1p4_distribution_vs_optical_power.png"
@@ -600,6 +699,14 @@ def main() -> int:
     )
     plot_tp1p4_freq_error_uniformity_distribution(
         df_opt, opt_dir / "tp1p4_distribution_frequency_error_uniformity.png"
+    )
+
+    # Channel spacing error — optimized (spacing computed from corrected freq errors)
+    plot_tp1p4_channel_spacing_distribution(
+        df_opt, opt_dir / "tp1p4_distribution_channel_spacing_error.png"
+    )
+    plot_tp1p4_channel_spacing_combined_banks(
+        df_opt, opt_dir / "tp1p4_distribution_channel_spacing_error_combined_banks.png"
     )
 
     return 0

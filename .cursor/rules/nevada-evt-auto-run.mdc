@@ -1,0 +1,29 @@
+---
+description: After editing Nevada/EVT analysis Python, run the pipeline without asking
+globs: "**/blueray_nevada_f2f/analysis/src/**/*.py"
+alwaysApply: false
+---
+
+# Nevada / EVT analysis — run after code changes
+
+When you change any file under `blueray_nevada_f2f/analysis/src/` (especially `plot_nevada_ofc_tile_timeseries.py`, `plot_evt_regulators_aggressors.py`, or related plotting drivers), **end the task by actually running the analysis** so PNGs and outputs refresh. **Do not** only suggest that the user run it, and **do not** wait for a separate “run it” message.
+
+**Arch root** (directory that contains `blueray_nevada_f2f/` and `ips_clm_gen1/`):
+
+`/Users/sashwyn06/gitsrc/friendly-system-lmi/src/bug-free-fiesta-guide1-arch`
+
+**Default command** (full gen1 + Oct2026 when data exists + Nevada tiles to both output dirs):
+
+```bash
+cd /Users/sashwyn06/gitsrc/friendly-system-lmi/src/bug-free-fiesta-guide1-arch && python3 blueray_nevada_f2f/analysis/src/plot_evt_regulators_aggressors.py
+```
+
+**Faster option** when the diff **only** affects `plot_nevada_ofc_tile_timeseries.py` (skips regulators/Oct2026):
+
+```bash
+cd /Users/sashwyn06/gitsrc/friendly-system-lmi/src/bug-free-fiesta-guide1-arch && \
+python3 blueray_nevada_f2f/analysis/src/plot_nevada_ofc_tile_timeseries.py --all-tiles --output-dir blueray_nevada_f2f/analysis/results/evt && \
+python3 blueray_nevada_f2f/analysis/src/plot_nevada_ofc_tile_timeseries.py --all-tiles --output-dir blueray_nevada_f2f/nevada_prep/analysis/results
+```
+
+Use the faster option only when regulators/Oct2026 code paths were not modified. Otherwise use the full driver.

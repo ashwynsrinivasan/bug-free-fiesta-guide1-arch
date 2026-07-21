@@ -1,0 +1,9 @@
+---
+description: Run ips_clm_gen1 data_analysis scripts after edits; write outputs without waiting for the user to ask.
+globs: "**/ips_clm_gen1/ips_data/data_analysis/**"
+alwaysApply: true
+---
+
+# IPS CLM Gen1 `data_analysis`
+
+When you add or change runnable analysis under `ips_clm_gen1/ips_data/data_analysis` (including `wlt/src` scripts), run the affected entrypoint from `ips_clm_gen1/ips_data/data_analysis` after substantive edits, confirm a successful exit, and ensure outputs land in the script’s results directory (for WLT: `wlt/results/`). Do not skip execution or defer it until the user explicitly asks to run the script.
